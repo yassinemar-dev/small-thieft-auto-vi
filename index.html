@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GTA VI — Vice City Web</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <canvas id="game-canvas"></canvas>
+
+  <div id="ui-overlay">
+    <!-- Top left: location + wanted -->
+    <div id="top-left">
+      <div id="location">VICE CITY <span id="district">— DOWNTOWN</span></div>
+      <div id="wanted" aria-label="Wanted level"></div>
+    </div>
+
+    <!-- Top right: GTA VI style minimap -->
+    <div id="minimap-wrap">
+      <div id="minimap">
+        <canvas id="minimap-canvas" width="360" height="360"></canvas>
+        <div id="map-ring"></div>
+        <div id="map-north">N</div>
+      </div>
+      <div id="cash">$ <span id="cash-amount">12,450</span></div>
+    </div>
+
+    <!-- Bottom left: health / armor -->
+    <div id="bottom-left">
+      <div class="bar-row">
+        <div class="bar-icon health-icon">+</div>
+        <div class="bar-track"><div id="health-fill" class="bar-fill health-fill"></div></div>
+        <div class="bar-value" id="health-value">100</div>
+      </div>
+      <div class="bar-row">
+        <div class="bar-icon armor-icon">◆</div>
+        <div class="bar-track"><div id="armor-fill" class="bar-fill armor-fill"></div></div>
+        <div class="bar-value" id="armor-value">100</div>
+      </div>
+    </div>
+
+    <!-- Bottom right: speedometer (driving only) -->
+    <div id="speedo">
+      <svg viewBox="0 0 200 200">
+        <circle class="spd-bg" cx="100" cy="100" r="86"></circle>
+        <circle id="spd-arc" class="spd-arc" cx="100" cy="100" r="86"></circle>
+      </svg>
+      <div id="spd-num">0</div>
+      <div id="spd-unit">MPH</div>
+      <div id="gear">D</div>
+    </div>
+
+    <!-- Controls hint -->
+    <div id="hint">
+      <span class="key">W A S D</span> move
+      <span class="sep">•</span>
+      <span class="key">F</span> enter / exit
+      <span class="sep">•</span>
+      <span class="key">MOUSE</span> look
+      <span class="sep">•</span>
+      <span class="key">R</span> repair
+    </div>
+
+    <div id="notification"></div>
+  </div>
+
+  <script type="module" src="/main.js"></script>
+</body>
+</html>

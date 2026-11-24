@@ -1,0 +1,172 @@
+@import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Barlow+Condensed:wght@600;700&display=swap');
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html, body {
+  width: 100%; height: 100%;
+  overflow: hidden;
+  background: #0b0e18;
+  font-family: 'Rajdhani', 'Segoe UI', sans-serif;
+  user-select: none;
+}
+
+#game-canvas { display: block; width: 100vw; height: 100vh; }
+
+#ui-overlay {
+  position: absolute; inset: 0;
+  pointer-events: none;
+  color: #fff;
+  text-shadow: 0 2px 8px rgba(0,0,0,.7);
+  transition: opacity .2s ease;
+}
+
+/* ---------- Top left ---------- */
+#top-left { position: absolute; top: 26px; left: 30px; }
+
+#location {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 30px; font-weight: 700; letter-spacing: 3px;
+  color: #fff;
+  line-height: 1;
+}
+#location #district {
+  display: block;
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 14px; letter-spacing: 5px;
+  color: #ff5ca8;
+  margin-top: 4px;
+}
+#wanted { display: flex; gap: 4px; margin-top: 12px; height: 22px; }
+.star {
+  width: 21px; height: 21px;
+  background: #ffcc33;
+  clip-path: polygon(50% 0%,61% 35%,98% 35%,68% 57%,79% 91%,50% 70%,21% 91%,32% 57%,2% 35%,39% 35%);
+  filter: drop-shadow(0 0 5px rgba(255,170,0,.5));
+  transition: opacity .25s, transform .25s;
+}
+.star.off { opacity: .18; filter: none; transform: scale(.85); }
+
+/* ---------- Top right / minimap ---------- */
+#minimap-wrap { position: absolute; top: 24px; right: 28px; display: flex; flex-direction: column; align-items: center; }
+#minimap {
+  position: relative;
+  width: 210px; height: 210px;
+  border-radius: 50%;
+  overflow: hidden;
+  box-shadow: 0 0 0 3px rgba(255,255,255,.18), 0 0 0 7px rgba(10,12,24,.75), 0 8px 30px rgba(0,0,0,.6);
+  background: #101a24;
+}
+#minimap-canvas { width: 100%; height: 100%; display: block; }
+#map-ring {
+  position: absolute; inset: 0; border-radius: 50%;
+  box-shadow: inset 0 0 22px rgba(0,0,0,.7);
+  pointer-events: none;
+}
+#map-north {
+  position: absolute; top: 7px; left: 50%; transform: translateX(-50%);
+  font-size: 11px; font-weight: 700; letter-spacing: 2px; color: #fff;
+  text-shadow: 0 0 5px #000;
+}
+#cash {
+  margin-top: 14px;
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 21px; letter-spacing: 1px;
+  color: #7dffb2;
+  background: rgba(8,12,22,.55);
+  padding: 3px 16px;
+  border-left: 2px solid #7dffb2;
+}
+
+/* ---------- Bottom left bars ---------- */
+#bottom-left { position: absolute; bottom: 30px; left: 30px; width: 260px; }
+.bar-row { display: flex; align-items: center; gap: 10px; margin-top: 9px; }
+.bar-icon {
+  width: 24px; height: 24px; flex: 0 0 24px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 17px; font-weight: 700; border-radius: 5px;
+  background: rgba(8,12,22,.6);
+}
+.health-icon { color: #ff5c7a; border: 1px solid rgba(255,92,122,.5); }
+.armor-icon { color: #56b9ff; border: 1px solid rgba(86,185,255,.5); font-size: 14px; }
+.bar-track {
+  flex: 1; height: 10px;
+  background: rgba(8,12,22,.75);
+  border: 1px solid rgba(255,255,255,.18);
+  border-radius: 2px; overflow: hidden;
+  transform: skewX(-18deg);
+}
+.bar-fill { height: 100%; width: 100%; transition: width .2s ease; }
+.health-fill { background: linear-gradient(90deg, #ff2e63, #ff7a9c); box-shadow: 0 0 10px rgba(255,46,99,.6); }
+.armor-fill { background: linear-gradient(90deg, #2b8fff, #7dd0ff); box-shadow: 0 0 10px rgba(43,143,255,.5); }
+.bar-value { width: 30px; text-align: right; font-size: 15px; font-weight: 700; }
+
+/* ---------- Speedometer ---------- */
+#speedo {
+  position: absolute; bottom: 22px; right: 28px;
+  width: 150px; height: 150px;
+  opacity: 0; transform: translateY(12px);
+  transition: opacity .3s ease, transform .3s ease;
+}
+#speedo.active { opacity: 1; transform: translateY(0); }
+#speedo svg { width: 100%; height: 100%; transform: rotate(135deg); }
+.spd-bg { fill: none; stroke: rgba(255,255,255,.12); stroke-width: 7; stroke-dasharray: 405 541; stroke-linecap: round; }
+.spd-arc {
+  fill: none; stroke: #ff5ca8; stroke-width: 7;
+  stroke-dasharray: 0 541; stroke-linecap: round;
+  filter: drop-shadow(0 0 5px rgba(255,92,168,.8));
+  transition: stroke-dasharray .08s linear;
+}
+#spd-num {
+  position: absolute; top: 46%; left: 50%; transform: translate(-50%,-50%);
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 48px; font-weight: 700; line-height: 1;
+}
+#spd-unit {
+  position: absolute; top: 66%; left: 50%; transform: translateX(-50%);
+  font-size: 12px; letter-spacing: 4px; color: #ff9ecb;
+}
+#gear {
+  position: absolute; bottom: 22%; left: 50%; transform: translateX(-50%);
+  font-size: 13px; font-weight: 700; color: #7dffb2;
+}
+
+/* ---------- Hint ---------- */
+#hint {
+  position: absolute; bottom: 22px; left: 50%; transform: translateX(-50%);
+  background: rgba(8,12,22,.7);
+  border: 1px solid rgba(255,255,255,.12);
+  padding: 8px 18px; border-radius: 30px;
+  font-size: 12px; letter-spacing: 1px; color: #cfd8e8;
+  white-space: nowrap;
+}
+#hint .key { color: #fff; font-weight: 700; }
+#hint .sep { color: #ff5ca8; margin: 0 7px; }
+
+/* ---------- Notification ---------- */
+#notification {
+  position: absolute; top: 18%; left: 50%; transform: translateX(-50%) translateY(-10px);
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 26px; letter-spacing: 2px;
+  color: #fff; opacity: 0;
+  transition: opacity .3s, transform .3s;
+}
+#notification.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+#notification.pink { color: #ff5ca8; }
+#notification.green { color: #7dffb2; }
+
+/* ---------- Damage flash ---------- */
+#ui-overlay::after {
+  content: ''; position: absolute; inset: 0;
+  background: radial-gradient(circle, transparent 40%, rgba(255,20,60,.55) 100%);
+  opacity: 0; transition: opacity .25s;
+  pointer-events: none;
+}
+#ui-overlay.hit::after { opacity: 1; transition: opacity .05s; }
+
+@media (max-width: 700px) {
+  #minimap { width: 140px; height: 140px; }
+  #location { font-size: 22px; }
+  #bottom-left { width: 180px; }
+  #speedo { width: 110px; height: 110px; }
+  #hint { font-size: 10px; }
+}

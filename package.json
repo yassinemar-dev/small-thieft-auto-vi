@@ -1,0 +1,17 @@
+{
+  "name": "gta6-web",
+  "version": "2.0.0",
+  "description": "GTA 6 Web Version - 3D browser game built with Three.js",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "devDependencies": {
+    "vite": "^5.4.0"
+  },
+  "dependencies": {
+    "three": "^0.160.0"
+  }
+}
