@@ -131,7 +131,7 @@ export class City {
     const asphalt = new THREE.MeshStandardMaterial({ map: asphaltTexture(), roughness: 1 });
     const roadMesh = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1), asphalt, this.roads.length);
     this.roads.forEach((r, i) => {
-      dummy.position.set(r.x + r.width / 2, 0.02, r.z + r.height / 2);
+      dummy.position.set(r.x + r.width / 2, 0.12, r.z + r.height / 2);
       dummy.rotation.set(-Math.PI / 2, 0, 0);
       dummy.scale.set(r.width, r.height, 1);
       dummy.updateMatrix();
@@ -158,7 +158,7 @@ export class City {
     });
     const edgeMesh = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1), edgeMat, edges.length);
     edges.forEach((e, i) => {
-      dummy.position.set(e.x, 0.055, e.z);
+      dummy.position.set(e.x, 0.32, e.z);
       dummy.rotation.set(-Math.PI / 2, 0, 0);
       dummy.scale.set(e.w, e.d, 1);
       dummy.updateMatrix();
@@ -199,7 +199,7 @@ export class City {
     }
     const dashMesh = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1), dashMat, dashes.length);
     dashes.forEach((d, i) => {
-      dummy.position.set(d.x, 0.065, d.z);
+      dummy.position.set(d.x, 0.36, d.z);
       dummy.rotation.set(-Math.PI / 2, 0, 0);
       dummy.scale.set(d.w, d.d, 1);
       dummy.updateMatrix();
@@ -224,7 +224,7 @@ export class City {
     }
     const crossMesh = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1), crossMat, crossings.length);
     crossings.forEach((c, i) => {
-      dummy.position.set(c.x, 0.075, c.z);
+      dummy.position.set(c.x, 0.4, c.z);
       dummy.rotation.set(-Math.PI / 2, 0, 0);
       dummy.scale.set(c.w, c.d, 1);
       dummy.updateMatrix();
@@ -712,7 +712,7 @@ export class City {
       m.instanceMatrix.needsUpdate = true;
       m.frustumCulled = false;
     });
-    this.group.add(poleMesh, boxMesh, redMesh, amberMesh, greenMesh);
+    this.group.add(signalPoleMesh, boxMesh, redMesh, amberMesh, greenMesh);
     this.trafficLights = { red: redMesh, amber: amberMesh, green: greenMesh, entries: intersections };
 
     scene.add(this.group);

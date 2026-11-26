@@ -152,7 +152,7 @@ const fill = new THREE.DirectionalLight(0x7fb0ff, 0.6);
 fill.position.set(200, 120, 300);
 scene.add(fill);
 
-const camera = new THREE.PerspectiveCamera(62, window.innerWidth / window.innerHeight, 0.1, 5000);
+const camera = new THREE.PerspectiveCamera(62, window.innerWidth / window.innerHeight, 2, 5000);
 camera.position.set(0, 60, 100);
 
 // ---- Renderer + post-processing ----
