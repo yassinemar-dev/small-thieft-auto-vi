@@ -16,21 +16,25 @@ const scene = new THREE.Scene();
 scene.background = new THREE.Color(0xff7a9c);
 scene.fog = new THREE.FogExp2(0xe99087, 0.00042);
 
-// Gradient sky dome
+// Gradient sky dome — vertex colours are repainted by the day-night clock
 const skyGeo = new THREE.SphereGeometry(3500, 32, 20);
-const skyColors = [];
-const top = new THREE.Color(0x101a44);
-const mid = new THREE.Color(0x8a4a8f);
-const low = new THREE.Color(0xff9a7a);
-const pos = skyGeo.attributes.position;
-for (let i = 0; i < pos.count; i++) {
-  const y = pos.getY(i) / 3500;
+const skyPos = skyGeo.attributes.position;
+const skyY = new Float32Array(skyPos.count);
+const skyColorAttr = new THREE.Float32BufferAttribute(new Float32Array(skyPos.count * 3), 3);
+skyGeo.setAttribute('color', skyColorAttr);
+for (let i = 0; i < skyPos.count; i++) skyY[i] = skyPos.getY(i) / 3500;
+function paintSky(topC, midC, lowC) {
+  const arr = skyColorAttr.array;
   const c = new THREE.Color();
-  if (y > 0.25) c.copy(mid).lerp(top, Math.min(1, (y - 0.25) / 0.75));
-  else c.copy(low).lerp(mid, Math.max(0, (y + 0.25) / 0.5));
-  skyColors.push(c.r, c.g, c.b);
+  for (let i = 0; i < skyY.length; i++) {
+    const y = skyY[i];
+    if (y > 0.25) c.copy(midC).lerp(topC, Math.min(1, (y - 0.25) / 0.75));
+    else c.copy(lowC).lerp(midC, Math.max(0, (y + 0.25) / 0.5));
+    arr[i * 3] = c.r; arr[i * 3 + 1] = c.g; arr[i * 3 + 2] = c.b;
+  }
+  skyColorAttr.needsUpdate = true;
 }
-skyGeo.setAttribute('color', new THREE.Float32BufferAttribute(skyColors, 3));
+paintSky(new THREE.Color(0x101a44), new THREE.Color(0x8a4a8f), new THREE.Color(0xff9a7a));
 const sky = new THREE.Mesh(skyGeo, new THREE.MeshBasicMaterial({
   vertexColors: true, side: THREE.BackSide, fog: false, depthWrite: false
 }));
@@ -75,6 +79,10 @@ for (let i = 0; i < 14; i++) {
   sprite.scale.set(620 + Math.random() * 520, 190 + Math.random() * 130, 1);
   cloudGroup.add(sprite);
 }
+cloudGroup.children.forEach(s => {
+  s.userData.baseOpacity = s.material.opacity;
+  s.userData.baseColor = s.material.color.clone();
+});
 
 // ---- Sun + lens flare ----
 const sun = new THREE.Mesh(
@@ -126,15 +134,20 @@ const texRing = flareTexture('ring');
 const texStreak = flareTexture('streak');
 
 const lensflare = new Lensflare();
-lensflare.addElement(new LensflareElement(texGlow, 320, 0, new THREE.Color(0xffd9a8)));
-lensflare.addElement(new LensflareElement(texStreak, 250, 0.06, new THREE.Color(0xffa878)));
-lensflare.addElement(new LensflareElement(texRing, 150, 0.42, new THREE.Color(0xff9ac0)));
-lensflare.addElement(new LensflareElement(texGlow, 120, 0.62, new THREE.Color(0xffcf80)));
+const flareElements = [
+  new LensflareElement(texGlow, 320, 0, new THREE.Color(0xffd9a8)),
+  new LensflareElement(texStreak, 250, 0.06, new THREE.Color(0xffa878)),
+  new LensflareElement(texRing, 150, 0.42, new THREE.Color(0xff9ac0)),
+  new LensflareElement(texGlow, 120, 0.62, new THREE.Color(0xffcf80))
+];
+flareElements.forEach(el => { lensflare.addElement(el); el.userData = { base: el.color.clone() }; });
 sun.add(lensflare);
 
 // ---- Lighting ----
-scene.add(new THREE.HemisphereLight(0xffc2b8, 0x33405a, 0.7));
-scene.add(new THREE.AmbientLight(0xffffff, 0.2));
+const hemi = new THREE.HemisphereLight(0xffc2b8, 0x33405a, 0.7);
+scene.add(hemi);
+const ambient = new THREE.AmbientLight(0xffffff, 0.2);
+scene.add(ambient);
 
 const dirLight = new THREE.DirectionalLight(0xffd0b0, 2.5);
 dirLight.position.set(-280, 160, -400);
@@ -153,6 +166,85 @@ scene.add(dirLight, dirLight.target);
 const fill = new THREE.DirectionalLight(0x7fb0ff, 0.3);
 fill.position.set(200, 120, 300);
 scene.add(fill);
+
+// ---- Shared day-night clock: golden hour → dusk → blue hour → golden hour ----
+const DAY_LENGTH = 360;
+const GOLDEN = {
+  top: 0x101a44, mid: 0x8a4a8f, low: 0xff9a7a, bg: 0xff7a9c, fog: 0xe99087,
+  fogDensity: 0.00042, sun: 0xffe6b8, dir: 0xffd0b0, dirI: 2.5, sunY: 300,
+  hemiSky: 0xffc2b8, hemiGround: 0x33405a, hemiI: 0.7, ambI: 0.2,
+  fill: 0x7fb0ff, fillI: 0.3, exposure: 1.05, night: 0.22
+};
+const PALETTE = [
+  { at: 0, ...GOLDEN },
+  { at: 0.35,
+    top: 0x0a1030, mid: 0x5d2a70, low: 0xff6f66, bg: 0xc85a80, fog: 0xa56178,
+    fogDensity: 0.00050, sun: 0xffc090, dir: 0xffa078, dirI: 1.7, sunY: 150,
+    hemiSky: 0xd88aa0, hemiGround: 0x24304a, hemiI: 0.6, ambI: 0.17,
+    fill: 0x6a90ff, fillI: 0.42, exposure: 1.02, night: 0.62 },
+  { at: 0.68,
+    top: 0x05081c, mid: 0x1a1b46, low: 0x5c4278, bg: 0x2b2048, fog: 0x333a60,
+    fogDensity: 0.00062, sun: 0xa8c0ff, dir: 0x8fa8ff, dirI: 0.7, sunY: 90,
+    hemiSky: 0x8098d0, hemiGround: 0x1a2240, hemiI: 0.54, ambI: 0.18,
+    fill: 0x5a80ff, fillI: 0.5, exposure: 1.16, night: 1 },
+  { at: 1, ...GOLDEN }
+];
+const skyTop = new THREE.Color(), skyMid = new THREE.Color(), skyLow = new THREE.Color();
+const fogCol = new THREE.Color(), bgCol = new THREE.Color(), sunCol = new THREE.Color();
+const dirCol = new THREE.Color(), hemiSkyCol = new THREE.Color();
+const hemiGroundCol = new THREE.Color(), fillCol = new THREE.Color(), tmpCol = new THREE.Color();
+
+const dayNight = {
+  t: 0,
+  paintTimer: 0,
+  night: 0,
+  update(dt) {
+    this.t = (this.t + dt / DAY_LENGTH) % 1;
+    let i = 0;
+    while (i < PALETTE.length - 2 && this.t > PALETTE[i + 1].at) i++;
+    const a = PALETTE[i], b = PALETTE[i + 1];
+    const k = THREE.MathUtils.smoothstep((this.t - a.at) / (b.at - a.at), 0, 1);
+    const mix = (out, key) => out.setHex(a[key]).lerp(tmpCol.setHex(b[key]), k);
+
+    mix(skyTop, 'top'); mix(skyMid, 'mid'); mix(skyLow, 'low');
+    this.paintTimer += dt;
+    if (this.paintTimer > 0.12) { paintSky(skyTop, skyMid, skyLow); this.paintTimer = 0; }
+
+    mix(fogCol, 'fog'); scene.fog.color.copy(fogCol);
+    scene.fog.density = THREE.MathUtils.lerp(a.fogDensity, b.fogDensity, k);
+    mix(bgCol, 'bg'); scene.background.copy(bgCol);
+
+    mix(sunCol, 'sun'); sun.material.color.copy(sunCol);
+    flareElements.forEach(el => el.color.copy(el.userData.base).lerp(sunCol, 0.55));
+    mix(dirCol, 'dir'); dirLight.color.copy(dirCol);
+    dirLight.intensity = THREE.MathUtils.lerp(a.dirI, b.dirI, k);
+    const sunY = THREE.MathUtils.lerp(a.sunY, b.sunY, k);
+    sun.position.set(camera.position.x - 1200, sunY, camera.position.z - 1800);
+    dirLight.position.set(-280, Math.max(60, sunY * 0.55), -400);
+
+    mix(hemiSkyCol, 'hemiSky'); mix(hemiGroundCol, 'hemiGround');
+    hemi.color.copy(hemiSkyCol); hemi.groundColor.copy(hemiGroundCol);
+    hemi.intensity = THREE.MathUtils.lerp(a.hemiI, b.hemiI, k);
+    ambient.intensity = THREE.MathUtils.lerp(a.ambI, b.ambI, k);
+    mix(fillCol, 'fill'); fill.color.copy(fillCol);
+    fill.intensity = THREE.MathUtils.lerp(a.fillI, b.fillI, k);
+    renderer.toneMappingExposure = THREE.MathUtils.lerp(a.exposure, b.exposure, k);
+
+    this.night = THREE.MathUtils.lerp(a.night, b.night, k);
+    game?.city.setNightFactor(this.night);
+    bloom.strength = THREE.MathUtils.lerp(0.55, 0.9, this.night);
+    cloudGroup.children.forEach(s => {
+      s.material.opacity = s.userData.baseOpacity * THREE.MathUtils.lerp(1, 0.55, this.night);
+      s.material.color.copy(s.userData.baseColor).lerp(tmpCol.setHex(0x6a7ba8), this.night * 0.6);
+    });
+
+    const clock = document.getElementById('clock');
+    if (clock) {
+      const minutes = Math.floor(this.t * 360);
+      clock.textContent = `${String(18 + Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
+    }
+  }
+};
 
 const camera = new THREE.PerspectiveCamera(62, window.innerWidth / window.innerHeight, 2, 5000);
 camera.position.set(0, 60, 100);
@@ -217,6 +309,8 @@ if (import.meta.env.DEV) {
   window.__renderer = renderer;
   window.__composer = composer;
   window.__bloom = bloom;
+  window.__dayNight = dayNight;
+  window.__setTime = (t) => { dayNight.t = t; dayNight.paintTimer = 1; dayNight.update(0); };
 }
 
 // ---- Game ----
@@ -289,10 +383,6 @@ function gameLoop(timestamp) {
     game.update(dt);
     game.draw();
 
-    sky.position.copy(camera.position);
-    cloudGroup.rotation.y += dt * 0.004;
-    sun.position.set(camera.position.x - 1200, 300, camera.position.z - 1800);
-
     // Speed-sensitive motion blur + subtle FOV kick
     const speedRatio = Math.min(1, Math.abs(game.player.speed) / game.player.maxSpeed);
     afterimage.uniforms['damp'].value = game.player.inVehicle
@@ -305,6 +395,9 @@ function gameLoop(timestamp) {
     audio.update(game, dt);
   }
 
+  sky.position.copy(camera.position);
+  cloudGroup.rotation.y += dt * 0.004;
+  dayNight.update(dt);
   composer.render();
   requestAnimationFrame(gameLoop);
 }

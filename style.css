@@ -59,6 +59,10 @@ html, body {
 
 /* ---------- Top left ---------- */
 #top-left { position: absolute; top: 26px; left: 30px; }
+#clock {
+  margin-top: 3px; font-size: 13px; letter-spacing: 3px; color: #ffc857;
+  text-shadow: 0 0 12px rgba(255,200,87,.45);
+}
 
 #location {
   font-family: 'Barlow Condensed', sans-serif;

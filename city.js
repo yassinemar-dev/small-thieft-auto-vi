@@ -83,6 +83,9 @@ export class City {
     this.roads = [];
     this.parks = [];
     this.colliders = []; // AABBs for collision: {minX,maxX,minZ,maxZ}
+    this.glowMaterials = []; // emissive materials that brighten at night
+    this.neonMaterials = []; // unlit sign materials that gain punch at night
+    this.nightFactor = 0;
 
     const blockSize = 200;
     const roadWidth = 56; // wider avenues, less cramped than the first layout
@@ -406,6 +409,8 @@ export class City {
     const winCool = new THREE.MeshStandardMaterial({
       color: 0xa9e8ff, emissive: 0x4fb8ff, emissiveIntensity: 0.7
     });
+    this.glowMaterials.push({ mat: winWarm, base: 0.9, night: 1.9 });
+    this.glowMaterials.push({ mat: winCool, base: 0.7, night: 1.6 });
     const winWarmList = [], winCoolList = [];
     this.buildings.forEach(b => {
       const bh = h(b);
@@ -498,6 +503,7 @@ export class City {
         const mat = new THREE.MeshBasicMaterial({
           map: textures[k], transparent: true, side: THREE.DoubleSide, toneMapped: false
         });
+        this.neonMaterials.push(mat);
         const mesh = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1), mat, list.length);
         list.forEach((s, i) => {
           dummy.position.set(s.x, s.y, s.z);
@@ -682,6 +688,7 @@ export class City {
     const bulbMat = new THREE.MeshStandardMaterial({
       color: 0xfff0c0, emissive: 0xffd070, emissiveIntensity: 1.6
     });
+    this.glowMaterials.push({ mat: bulbMat, base: 1.6, night: 3.2 });
     const poleMat = new THREE.MeshStandardMaterial({
       color: 0x3a4050, metalness: 0.6, roughness: 0.5
     });
@@ -827,6 +834,17 @@ export class City {
 
     scene.add(this.group);
     return this.group;
+  }
+
+  /** Drive window/lamp/neon brightness from the shared day-night clock. */
+  setNightFactor(f) {
+    this.nightFactor = f;
+    for (const g of this.glowMaterials) {
+      g.mat.emissiveIntensity = THREE.MathUtils.lerp(g.base, g.night, f);
+    }
+    for (const mat of this.neonMaterials) {
+      mat.color.setScalar(THREE.MathUtils.lerp(1, 1.25, f));
+    }
   }
 
   /** Alternate red/green every four seconds and blink the amber bulbs. */

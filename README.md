@@ -32,7 +32,7 @@ Open <http://localhost:5173/>. Use `npm run build` for a production bundle.
 - **Driving model** — acceleration, reverse, speed-sensitive steering, handbrake, body roll, wheel spin, collisions, brake lights, damage tint and engine smoke.
 - **Living city** — 43 lane-following AI cars with intersection turns and traffic lights, 64 sidewalk pedestrians who dodge cars and panic-run from fast vehicles or police.
 - **Performance-conscious rendering** — instanced cars and pedestrians, instanced props/decals, MSAA, half-float post-processing, subtle film grade and speed-sensitive motion blur.
-- **Atmosphere** — sunset sky, drifting clouds, lens flare, fog, palms, parks, awnings, neon shop signs, streetlight glow, rooftop props and zebra crossings.
-- **HUD** — rotating minimap with an honest compass, wanted stars, cash, district label, health/armor bars, speedometer, mission panel, notifications and damage flashes.
+- **Atmosphere** — a six-minute day-night cycle from golden hour through dusk to blue hour, driving sky colours, fog, sun angle, exposure, bloom and window/neon brightness; plus drifting clouds, lens flare, palms, parks, awnings, rooftop props and zebra crossings.
+- **HUD** — rotating minimap with an honest compass, wanted stars, cash, in-game clock, district label, health/armor bars, speedometer, mission panel, notifications and damage flashes.
 - **Audio** — synthesized engine note, police siren, crashes, impacts, checkpoints, mission completion and wanted alerts; no external sound files.
 - **Pause menu** — freezes the simulation and offers resume or a clean full restart.
