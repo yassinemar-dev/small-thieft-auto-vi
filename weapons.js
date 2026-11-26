@@ -2,6 +2,7 @@
 import * as THREE from 'three';
 
 const MAX_TRACERS = 48;
+const MAX_ENEMY_TRACERS = 24;
 const MAX_SPARKS = 24;
 const TRACER_LENGTH = 12;
 const BULLET_SPEED = 520;
@@ -29,6 +30,7 @@ export class WeaponSystem {
     this.heatCooldown = 0;
     this.muzzleLife = 0;
     this.bullets = [];
+    this.enemyShots = [];
 
     this.dummy = new THREE.Object3D();
     this.axis = new THREE.Vector3(0, 0, 1);
@@ -44,6 +46,15 @@ export class WeaponSystem {
     this.tracers.frustumCulled = false;
     this.tracers.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     scene.add(this.tracers);
+
+    // Police return fire gets its own red instanced tracers
+    this.enemyTracers = new THREE.InstancedMesh(tracerGeo, new THREE.MeshBasicMaterial({
+      color: 0xff4d6d, transparent: true, opacity: 0.85, depthWrite: false,
+      blending: THREE.AdditiveBlending, toneMapped: false
+    }), MAX_ENEMY_TRACERS);
+    this.enemyTracers.frustumCulled = false;
+    this.enemyTracers.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    scene.add(this.enemyTracers);
 
     // Sparks reuse one point cloud instead of allocating a sprite per impact
     this.sparkPos = new Float32Array(MAX_SPARKS * 3);
@@ -145,6 +156,34 @@ export class WeaponSystem {
       this.heatCooldown = 6;
     }
     return true;
+  }
+
+  /** A single warning shot from a police cruiser toward the player. */
+  policeShot(game, car) {
+    if (!game || game.player.dead) return false;
+    const from = car.position.clone();
+    from.y = 18;
+    const to = game.player.position.clone();
+    to.y = 18;
+    const scatter = 12 + Math.abs(game.player.speed) * 0.18;
+    to.x += (Math.random() - 0.5) * scatter * 2;
+    to.z += (Math.random() - 0.5) * scatter * 2;
+    this.enemyShots.push({ prev: from, pos: to, life: 0.14 });
+    if (this.enemyShots.length > MAX_ENEMY_TRACERS) this.enemyShots.shift();
+
+    const chance = Math.min(0.72, 0.24 + game.wanted * 0.09);
+    const hit = Math.random() < chance;
+    if (hit) {
+      game.player.damage(5 + game.wanted * 2);
+      game.flashHit();
+      game.shake = Math.min(2.6, game.shake + 0.7);
+      if (game.policeHitCooldown <= 0) {
+        game.notify('HIT BY POLICE', 'pink');
+        game.policeHitCooldown = 1.6;
+      }
+    }
+    game.audio?.enemyShot();
+    return hit;
   }
 
   /** Segment-to-point distance in the ground plane, with the closest t value. */
@@ -272,6 +311,11 @@ export class WeaponSystem {
       }
     }
 
+    for (let i = this.enemyShots.length - 1; i >= 0; i--) {
+      this.enemyShots[i].life -= dt;
+      if (this.enemyShots[i].life <= 0) this.enemyShots.splice(i, 1);
+    }
+
     if (this.muzzleLife > 0) {
       this.muzzleLife -= dt;
       this.muzzle.material.opacity = Math.max(0, this.muzzleLife / 0.07);
@@ -287,13 +331,15 @@ export class WeaponSystem {
     this.dummy.scale.set(1, 1, 0.0001);
     this.dummy.updateMatrix();
     for (let i = 0; i < MAX_TRACERS; i++) this.tracers.setMatrixAt(i, this.dummy.matrix);
+    for (let i = 0; i < MAX_ENEMY_TRACERS; i++) this.enemyTracers.setMatrixAt(i, this.dummy.matrix);
     this.tracers.instanceMatrix.needsUpdate = true;
+    this.enemyTracers.instanceMatrix.needsUpdate = true;
   }
 
-  syncTracers() {
+  writeTracers(mesh, max, shots) {
     let i = 0;
-    for (const b of this.bullets) {
-      if (i >= MAX_TRACERS) break;
+    for (const b of shots) {
+      if (i >= max) break;
       const delta = this.tmp.subVectors(b.pos, b.prev);
       const dist = delta.length();
       if (dist < 0.05) continue;
@@ -301,13 +347,18 @@ export class WeaponSystem {
       this.dummy.quaternion.setFromUnitVectors(this.axis, delta.normalize());
       this.dummy.scale.set(1, 1, dist / TRACER_LENGTH);
       this.dummy.updateMatrix();
-      this.tracers.setMatrixAt(i++, this.dummy.matrix);
+      mesh.setMatrixAt(i++, this.dummy.matrix);
     }
     this.dummy.position.set(0, -1000, 0);
     this.dummy.scale.set(1, 1, 0.0001);
     this.dummy.updateMatrix();
-    for (; i < MAX_TRACERS; i++) this.tracers.setMatrixAt(i, this.dummy.matrix);
-    this.tracers.instanceMatrix.needsUpdate = true;
+    for (; i < max; i++) mesh.setMatrixAt(i, this.dummy.matrix);
+    mesh.instanceMatrix.needsUpdate = true;
+  }
+
+  syncTracers() {
+    this.writeTracers(this.tracers, MAX_TRACERS, this.bullets);
+    this.writeTracers(this.enemyTracers, MAX_ENEMY_TRACERS, this.enemyShots);
   }
 
   syncSparks(dt) {

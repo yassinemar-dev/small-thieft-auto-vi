@@ -29,7 +29,7 @@ Open <http://localhost:5173/>. Use `npm run build` for a production bundle.
 ## Features
 
 - **Three rotating jobs** — Vice Run (five checkpoints), Courier (three pickup/drop-off stops) and Takedown (ram a marked car until wrecked), each with per-objective cash, a decaying time bonus and automatic rotation after completion. Press `M` to skip to the next job.
-- **Wanted system** — crashes, gunfire and pedestrian hits raise up to five stars; nearby traffic turns into pursuing police cruisers with flashing red/blue lightbars and ramming AI.
+- **Wanted system** — crashes, gunfire and pedestrian hits raise up to five stars; nearby traffic turns into pursuing police cruisers with flashing red/blue lightbars and ramming AI, and from three stars they return fire when they have a clear line of sight.
 - **Drive-by pistol** — hold the left mouse button (or `J`) to fire from the driver's side or on foot, with pooled tracers, sparks, a muzzle flash, a 12-round magazine, timed reloads and hits that damage cars, down pedestrians and advance Takedown jobs.
 - **Death and respawn** — a `WASTED` screen, hospital bill, cleared wanted level and respawn near the starter car.
 - **Driving model** — acceleration, reverse, speed-sensitive steering, handbrake, body roll, wheel spin, collisions, brake lights, night-reactive headlamps, damage tint, engine smoke, and engine fires that end in an explosion, a wrecked car and a forced exit.

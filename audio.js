@@ -182,6 +182,7 @@ export class GameAudio {
     this.tone(110, 0.35, 'triangle', 0.16, 0.05);
   }
   shoot() { this.burst(0.13, 3800); this.tone(190, 0.06, 'square', 0.07); }
+  enemyShot() { this.burst(0.08, 2800); this.tone(140, 0.05, 'sawtooth', 0.045); }
   reload() {
     this.tone(430, 0.05, 'square', 0.05, 0);
     this.tone(620, 0.05, 'square', 0.05, 0.18);

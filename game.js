@@ -187,6 +187,7 @@ export class Game {
     this.ramCooldown = 0;
     this.explosions = [];
     this.burnCooldown = 0;
+    this.policeHitCooldown = 0;
     this.createExplosionTexture();
     this.createMissionMarker();
 
@@ -732,6 +733,26 @@ export class Game {
     v.position.set(res.x, 15, res.z);
     v.rotation.y = u.aiDir;
 
+    // Three stars and up: cruisers take pot shots when they can see the player
+    u.fireCooldown = Math.max(0, (u.fireCooldown || 0) - dt);
+    const shotDist = Math.hypot(p.x - v.position.x, p.z - v.position.z);
+    if (this.wanted >= 3 && shotDist < 320 && shotDist > 30 && u.fireCooldown <= 0) {
+      let blocked = false;
+      for (let s = 1; s < 5; s++) {
+        const k = s / 5;
+        if (this.city.isBlocked(
+          THREE.MathUtils.lerp(v.position.x, p.x, k),
+          THREE.MathUtils.lerp(v.position.z, p.z, k), 2)) {
+          blocked = true;
+          break;
+        }
+      }
+      if (!blocked) {
+        u.fireCooldown = THREE.MathUtils.lerp(2.1, 0.9, (this.wanted - 3) / 2);
+        this.weapon.policeShot(this, v);
+      }
+    }
+
     const pv = this.player.currentVehicle;
     if (pv && pv !== v) {
       const d = Math.hypot(pv.position.x - v.position.x, pv.position.z - v.position.z);
@@ -761,6 +782,7 @@ export class Game {
   update(dt) {
     dt = Math.min(dt, 0.05);
     this.crashCooldown = Math.max(0, this.crashCooldown - dt);
+    this.policeHitCooldown = Math.max(0, this.policeHitCooldown - dt);
     this.syncPolice();
 
     if (this.player.dead) {
