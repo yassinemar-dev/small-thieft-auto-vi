@@ -121,6 +121,7 @@ export class Game {
     this.wanted = 0;
     this.wantedTimer = 0;
     this.crashCooldown = 0;
+    this.policeCars = [];
     this.cash = 12450;
     this.keys = {};
     this.prevF = false;
@@ -141,6 +142,7 @@ export class Game {
     car.rotation.y = dir !== undefined ? dir : spot.dir + (Math.random() > 0.5 ? Math.PI : 0);
     car.userData.aiSpeed = 12 + Math.random() * 10;
     car.userData.aiTarget = car.rotation.y;
+    car.userData.originalColor = car.userData.paint.color.clone();
     return car;
   }
 
@@ -199,9 +201,74 @@ export class Game {
     this.notify('WANTED LEVEL ' + this.wanted, 'pink');
   }
 
+  /** Promote nearby traffic into a pursuing police fleet for the wanted level. */
+  syncPolice() {
+    const target = Math.min(this.wanted, 5);
+    while (this.policeCars.length < target) {
+      const p = this.player.position;
+      const car = this.vehicles
+        .filter(v => !v.userData.stationary && !v.userData.police && v !== this.player.currentVehicle)
+        .sort((a, b) => Math.hypot(a.position.x - p.x, a.position.z - p.z)
+                      - Math.hypot(b.position.x - p.x, b.position.z - p.z))[0];
+      if (!car) break;
+      car.userData.police = true;
+      car.userData.paint.color.setHex(0xf1f5f9);
+      car.userData.aiSpeed = Math.max(car.userData.aiSpeed, 18);
+      this.policeCars.push(car);
+    }
+    while (this.policeCars.length > target) {
+      const car = this.policeCars.pop();
+      car.userData.police = false;
+      car.userData.paint.color.copy(car.userData.originalColor);
+      car.userData.lastCross = null;
+    }
+  }
+
+  /** Simple pursuit steering: home in on the player and ram on contact. */
+  updatePoliceCar(v, dt) {
+    const u = v.userData, p = this.player.position;
+    const desired = Math.atan2(p.x - v.position.x, p.z - v.position.z);
+    const diff = Math.atan2(Math.sin(desired - u.aiDir), Math.cos(desired - u.aiDir));
+    u.aiDir += diff * Math.min(1, dt * 2.2);
+    const target = Math.min(32, 20 + this.wanted * 2);
+    u.aiSpeed += (target - u.aiSpeed) * Math.min(1, dt * 2);
+    u.frameSpeed = u.aiSpeed;
+    (u.wheels || []).forEach(w => { w.rotation.z += u.aiSpeed * dt * 0.11; });
+
+    const nx = v.position.x + Math.sin(u.aiDir) * u.aiSpeed * dt;
+    const nz = v.position.z + Math.cos(u.aiDir) * u.aiSpeed * dt;
+    const res = this.city.resolveCircle(nx, nz, 14);
+    if (res.hit) u.aiSpeed *= 0.5;
+    v.position.set(res.x, 15, res.z);
+    v.rotation.y = u.aiDir;
+
+    const pv = this.player.currentVehicle;
+    if (pv && pv !== v) {
+      const d = Math.hypot(pv.position.x - v.position.x, pv.position.z - v.position.z);
+      if (d < 55 && d > 0.01 && this.crashCooldown <= 0) {
+        this.crashCooldown = 1.2;
+        const push = (55 - d) / d * 0.6;
+        pv.position.x += (pv.position.x - v.position.x) * push;
+        pv.position.z += (pv.position.z - v.position.z) * push;
+        this.player.damage(8);
+        this.shake = Math.min(3, 1.2 + Math.abs(this.player.speed) * 0.04);
+        this.flashHit();
+        this.player.speed *= 0.7;
+      }
+    }
+
+    if (Math.abs(v.position.x) > 2100 || Math.abs(v.position.z) > 2100) {
+      const spot = this.city.roadSpawn();
+      v.position.set(spot.x, 15, spot.z);
+      u.aiDir = spot.dir;
+      u.aiLane = City.laneOffset(spot.dir);
+    }
+  }
+
   update(dt) {
     dt = Math.min(dt, 0.05);
     this.crashCooldown = Math.max(0, this.crashCooldown - dt);
+    this.syncPolice();
 
     // ---- Input: F enter/exit, R repair ----
     const f = !!this.keys['f'];
@@ -239,6 +306,7 @@ export class Game {
 
     this.vehicles.forEach((v) => {
       if (v === this.player.currentVehicle || v.userData.stationary) return;
+      if (v.userData.police) { this.updatePoliceCar(v, dt); return; }
       const u = v.userData;
       u.frameSpeed = u.aiSpeed || 0;
 

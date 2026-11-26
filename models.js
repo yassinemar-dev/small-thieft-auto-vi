@@ -32,6 +32,9 @@ export class CarFleet {
     this.matrix = new THREE.Matrix4();
     this.shellMatrix = new THREE.Matrix4();
     this.shellEuler = new THREE.Euler(0, -Math.PI / 2, 0);
+    this.sirenRed = new THREE.Color(0xff2038);
+    this.sirenBlue = new THREE.Color(0x2b8fff);
+    this.sirenOff = new THREE.Color(0x000000);
     this.parts = [];
 
     const paintMat = new THREE.MeshStandardMaterial({ color: 0xffffff, metalness: 0.55, roughness: 0.32 });
@@ -62,7 +65,9 @@ export class CarFleet {
       ['headB', new THREE.BoxGeometry(2, 5, 7), [43, 4, 8], () => lightMat],
       ['tailA', new THREE.BoxGeometry(2, 4, 7), [-43, 4, -8], () => tailMat],
       ['tailB', new THREE.BoxGeometry(2, 4, 7), [-43, 4, 8], () => tailMat],
-      ['grille', new THREE.BoxGeometry(2, 5, 16), [43, -3, 0], () => chromeMat]
+      ['grille', new THREE.BoxGeometry(2, 5, 16), [43, -3, 0], () => chromeMat],
+      ['lightbarRed', new THREE.BoxGeometry(4, 4, 12), [-6, 34, -6], () => new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: false })],
+      ['lightbarBlue', new THREE.BoxGeometry(4, 4, 12), [-6, 34, 6], () => new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: false })]
     ];
 
     parts.forEach(([key, geo, pos, makeMat, kind, paint, extraRotZ]) => {
@@ -77,28 +82,37 @@ export class CarFleet {
 
   /** Push proxy transforms, paint, body roll and wheel spin to the GPU. */
   sync() {
+    const redOn = Math.floor(performance.now() / 140) % 2 === 0;
     this.cars.forEach((car, i) => {
       car.updateMatrix();
       this.shellEuler.set(0, -Math.PI / 2, car.userData.shell.rotation.z);
       this.shellMatrix.makeRotationFromEuler(this.shellEuler);
       const spin = car.userData.wheels[0].rotation.z;
+      const police = !!car.userData.police;
 
       this.parts.forEach(part => {
+        const siren = part.key.startsWith('lightbar');
+        const on = siren && police && ((part.key === 'lightbarRed') === redOn);
         this.local.position.set(part.pos[0], part.pos[1], part.pos[2]);
         const rx = part.kind === 'wheel' ? Math.PI / 2 : 0;
         const rz = part.kind === 'wheel' ? spin : (part.extraRotZ || 0);
         this.local.rotation.set(rx, 0, rz);
-        this.local.scale.setScalar(1);
+        this.local.scale.setScalar(siren ? (on ? 1 : 0) : 1);
         this.local.updateMatrix();
         this.matrix.multiplyMatrices(car.matrix, this.shellMatrix);
         this.matrix.multiply(this.local.matrix);
         part.mesh.setMatrixAt(i, this.matrix);
         if (part.paint) part.mesh.setColorAt(i, car.userData.paint.color);
+        if (siren) part.mesh.setColorAt(i, on
+          ? (part.key === 'lightbarRed' ? this.sirenRed : this.sirenBlue)
+          : this.sirenOff);
       });
     });
     this.parts.forEach(part => {
       part.mesh.instanceMatrix.needsUpdate = true;
-      if (part.paint && part.mesh.instanceColor) part.mesh.instanceColor.needsUpdate = true;
+      if ((part.paint || part.key.startsWith('lightbar')) && part.mesh.instanceColor) {
+        part.mesh.instanceColor.needsUpdate = true;
+      }
     });
   }
 }
