@@ -129,6 +129,7 @@ export class Game {
     this.prevF = false;
     this.prevR = false;
     this.prevM = false;
+    this.paused = false;
     this.hintTimer = 12;
 
     // Mission: a five-checkpoint Vice Run through the city
@@ -137,7 +138,11 @@ export class Game {
     this.missionCooldown = 0;
     this.createMissionMarker();
 
-    window.addEventListener('keydown', (e) => { this.keys[e.key.toLowerCase()] = true; });
+    window.addEventListener('keydown', (e) => {
+      const key = e.key.toLowerCase();
+      this.keys[key] = true;
+      if (!e.repeat && (key === 'p' || key === 'escape')) this.togglePause();
+    });
     window.addEventListener('keyup', (e) => { this.keys[e.key.toLowerCase()] = false; });
 
     this.initHUD();
@@ -234,6 +239,66 @@ export class Game {
         stars.appendChild(s);
       }
     }
+    document.querySelectorAll('[data-pause-action]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const action = btn.getAttribute('data-pause-action');
+        if (action === 'resume') this.setPaused(false);
+        else if (action === 'restart') this.restartGame();
+      });
+    });
+  }
+
+  setPaused(paused) {
+    if (this.paused === paused) return;
+    this.paused = paused;
+    this.keys = {};
+    this.prevF = this.prevR = this.prevM = true;
+    const screen = document.getElementById('pause-screen');
+    if (screen) screen.classList.toggle('show', paused);
+    if (paused && document.pointerLockElement) document.exitPointerLock();
+    if (!paused && !this.player.dead) {
+      const canvas = document.getElementById('game-canvas');
+      if (canvas && canvas.requestPointerLock) {
+        try {
+          const lock = canvas.requestPointerLock();
+          if (lock && lock.catch) lock.catch(() => {});
+        } catch (_) { /* pointer lock needs a trusted click; ignore */ }
+      }
+    }
+  }
+
+  togglePause() { this.setPaused(!this.paused); }
+
+  /** Full restart from the pause menu: no hospital fee, fresh run. */
+  restartGame() {
+    const p = this.player;
+    p.dead = false;
+    p.health = 100;
+    p.armor = 100;
+    p.speed = 0;
+    p.inVehicle = false;
+    p.currentVehicle = null;
+    p.character.visible = true;
+    p.shadow.visible = true;
+    const spot = this.city.roadSpawn(0, 0);
+    p.position.set(spot.x, 0, spot.z);
+    p.rotation = spot.dir;
+    p.character.position.copy(p.position);
+    p.shadow.position.set(p.position.x, 0.08, p.position.z);
+
+    this.cash = 12450;
+    this.wanted = 0;
+    this.wantedTimer = 0;
+    this.crashCooldown = 0;
+    this.deathActive = false;
+    this.deadTimer = 0;
+    const death = document.getElementById('death-screen');
+    if (death) death.classList.remove('show');
+    this.mission.completed = 0;
+    this.missionCooldown = 0;
+    this.startMission();
+    this.setPaused(false);
+    this.notify('NEW RUN', 'green');
   }
 
   /** Start a fresh checkpoint route near the city centre. */

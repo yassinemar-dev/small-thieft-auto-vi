@@ -251,22 +251,24 @@ function gameLoop(timestamp) {
   const dt = Math.min(lastTime ? (timestamp - lastTime) / 1000 : 0, 0.05);
   lastTime = timestamp;
 
-  game.update(dt);
-  game.draw();
+  if (!game.paused) {
+    game.update(dt);
+    game.draw();
 
-  sky.position.copy(camera.position);
-  cloudGroup.rotation.y += dt * 0.004;
-  sun.position.set(camera.position.x - 1200, 300, camera.position.z - 1800);
+    sky.position.copy(camera.position);
+    cloudGroup.rotation.y += dt * 0.004;
+    sun.position.set(camera.position.x - 1200, 300, camera.position.z - 1800);
 
-  // Speed-sensitive motion blur + subtle FOV kick
-  const speedRatio = Math.min(1, Math.abs(game.player.speed) / game.player.maxSpeed);
-  afterimage.uniforms['damp'].value = game.player.inVehicle
-    ? 0.12 + speedRatio * 0.42
-    : 0.1 + Math.min(0.24, Math.abs(game.player.speed) / 54 * 0.24);
-  const targetFov = 62 + (game.player.inVehicle ? speedRatio * 11 : 0);
-  camera.fov += (targetFov - camera.fov) * Math.min(1, dt * 4);
-  camera.updateProjectionMatrix();
-  grade.uniforms.time.value += dt;
+    // Speed-sensitive motion blur + subtle FOV kick
+    const speedRatio = Math.min(1, Math.abs(game.player.speed) / game.player.maxSpeed);
+    afterimage.uniforms['damp'].value = game.player.inVehicle
+      ? 0.12 + speedRatio * 0.42
+      : 0.1 + Math.min(0.24, Math.abs(game.player.speed) / 54 * 0.24);
+    const targetFov = 62 + (game.player.inVehicle ? speedRatio * 11 : 0);
+    camera.fov += (targetFov - camera.fov) * Math.min(1, dt * 4);
+    camera.updateProjectionMatrix();
+    grade.uniforms.time.value += dt;
+  }
 
   composer.render();
   requestAnimationFrame(gameLoop);
