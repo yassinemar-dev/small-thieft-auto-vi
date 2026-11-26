@@ -149,6 +149,18 @@ export class WeaponSystem {
     this.muzzleLife = 0.07;
 
     game.audio?.shoot();
+
+    // Nearby walkers scatter away from the muzzle flash
+    game.pedestrians.forEach(p => {
+      if (!p.alive) return;
+      const dx = p.mesh.position.x - origin.x;
+      const dz = p.mesh.position.z - origin.z;
+      if (Math.hypot(dx, dz) < 230) {
+        p.panic = 3.2;
+        p.panicDir = Math.atan2(dx, dz);
+      }
+    });
+
     // Gunfire alone draws heat; repeated shots do not stack instantly
     if (game.wanted === 0 && this.heatCooldown <= 0) {
       game.addWanted(1);
