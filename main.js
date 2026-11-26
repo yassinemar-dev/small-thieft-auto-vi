@@ -232,6 +232,7 @@ const dayNight = {
 
     this.night = THREE.MathUtils.lerp(a.night, b.night, k);
     game?.city.setNightFactor(this.night);
+    game?.cars.setNightFactor(this.night);
     bloom.strength = THREE.MathUtils.lerp(0.55, 0.9, this.night);
     cloudGroup.children.forEach(s => {
       s.material.opacity = s.userData.baseOpacity * THREE.MathUtils.lerp(1, 0.55, this.night);
@@ -248,6 +249,32 @@ const dayNight = {
 
 const camera = new THREE.PerspectiveCamera(62, window.innerWidth / window.innerHeight, 2, 5000);
 camera.position.set(0, 60, 100);
+
+// ---- Player headlights: one shadowless spotlight plus a soft ground pool ----
+const headlight = new THREE.SpotLight(0xffefc4, 0, 280, 0.5, 0.8, 1.3);
+scene.add(headlight, headlight.target);
+
+function headlightTexture() {
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = 128;
+  const c = cv.getContext('2d');
+  const g = c.createRadialGradient(64, 64, 2, 64, 64, 64);
+  g.addColorStop(0, 'rgba(255,240,196,0.95)');
+  g.addColorStop(0.45, 'rgba(255,226,160,0.38)');
+  g.addColorStop(1, 'rgba(255,210,140,0)');
+  c.fillStyle = g; c.fillRect(0, 0, 128, 128);
+  const tex = new THREE.CanvasTexture(cv);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+const poolGeo = new THREE.PlaneGeometry(190, 320);
+poolGeo.rotateX(-Math.PI / 2);
+const headlightPool = new THREE.Mesh(poolGeo, new THREE.MeshBasicMaterial({
+  map: headlightTexture(), transparent: true, opacity: 0, depthWrite: false,
+  blending: THREE.AdditiveBlending, toneMapped: false, fog: true
+}));
+headlightPool.visible = false;
+scene.add(headlightPool);
 
 // ---- Subtle film grade before tone mapping ----
 const GradeShader = {
@@ -322,6 +349,7 @@ if (import.meta.env.DEV) {
   window.__scene = scene;
   window.__camera = camera;
   window.__audio = audio;
+  window.__headlight = headlight;
 }
 window.addEventListener('pointerdown', () => audio.init(), { passive: true });
 window.addEventListener('keydown', () => audio.init());
@@ -383,6 +411,22 @@ function gameLoop(timestamp) {
     game.update(dt);
     game.draw();
 
+    // Headlights follow the driven car, fading in with the night factor
+    const hv = game.player.inVehicle ? game.player.currentVehicle : null;
+    if (hv) {
+      const fx = Math.sin(hv.rotation.y), fz = Math.cos(hv.rotation.y);
+      headlight.position.set(hv.position.x + fx * 40, 16, hv.position.z + fz * 40);
+      headlight.target.position.set(hv.position.x + fx * 160, 5, hv.position.z + fz * 160);
+      headlight.intensity = dayNight.night * 3.2;
+      headlightPool.position.set(hv.position.x + fx * 120, 0.7, hv.position.z + fz * 120);
+      headlightPool.rotation.y = hv.rotation.y;
+      headlightPool.material.opacity = dayNight.night * 0.5;
+      headlightPool.visible = dayNight.night > 0.05;
+    } else {
+      headlight.intensity = 0;
+      headlightPool.visible = false;
+    }
+
     // Speed-sensitive motion blur + subtle FOV kick
     const speedRatio = Math.min(1, Math.abs(game.player.speed) / game.player.maxSpeed);
     afterimage.uniforms['damp'].value = game.player.inVehicle
@@ -393,6 +437,9 @@ function gameLoop(timestamp) {
     camera.updateProjectionMatrix();
     grade.uniforms.time.value += dt;
     audio.update(game, dt);
+  } else {
+    headlight.intensity = 0;
+    headlightPool.visible = false;
   }
 
   sky.position.copy(camera.position);

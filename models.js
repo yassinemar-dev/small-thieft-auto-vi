@@ -107,6 +107,12 @@ export class CarFleet {
     this.sync();
   }
 
+  /** Brighten headlamps and tail lamps as the city clock moves into night. */
+  setNightFactor(f) {
+    lightMat.emissiveIntensity = THREE.MathUtils.lerp(0.45, 2.8, f);
+    tailMat.emissiveIntensity = THREE.MathUtils.lerp(0.6, 1.5, f);
+  }
+
   /** Push proxy transforms, paint, body roll and wheel spin to the GPU. */
   sync() {
     const redOn = Math.floor(performance.now() / 140) % 2 === 0;
