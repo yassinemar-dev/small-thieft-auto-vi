@@ -1373,6 +1373,42 @@ export class Game {
       c.beginPath(); c.arc(x, y, 3.5, 0, Math.PI * 2); c.fill();
     });
 
+    // Police — alternating red/blue so pursuit is readable at a glance
+    const blue = (Math.floor(performance.now() / 200) & 1) === 1;
+    this.policeCars.forEach(v => {
+      const [x, y] = map(v.position.x, v.position.z);
+      if (Math.abs(x) > mid || Math.abs(y) > mid) return;
+      c.fillStyle = blue ? '#3b8bff' : '#ff3b5c';
+      c.beginPath(); c.arc(x, y, 5, 0, Math.PI * 2); c.fill();
+      c.strokeStyle = 'rgba(255,255,255,.5)'; c.lineWidth = 1; c.stroke();
+    });
+
+    // Dashed route through the remaining objectives
+    if (this.mission.active) {
+      const color = this.mission.type === 'courier' ? '#ffc857'
+        : this.mission.type === 'sweep' ? '#ff4d8d' : '#35f0ff';
+      let points = [];
+      if (this.mission.type === 'sweep') {
+        if (this.mission.targetVehicle) points = [this.mission.targetVehicle.position];
+      } else {
+        points = this.checkpoints.slice(this.mission.index);
+      }
+      if (points.length) {
+        c.strokeStyle = color;
+        c.globalAlpha = 0.38;
+        c.lineWidth = 2;
+        c.setLineDash([7, 7]);
+        c.beginPath();
+        points.forEach((p, i) => {
+          const [x, y] = map(p.x, p.z);
+          if (i === 0) c.moveTo(x, y); else c.lineTo(x, y);
+        });
+        c.stroke();
+        c.setLineDash([]);
+        c.globalAlpha = 1;
+      }
+    }
+
     // Active objective (checkpoint or pursuit target)
     const objective = this.mission.type === 'sweep'
       ? this.mission.targetVehicle?.position
