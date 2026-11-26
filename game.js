@@ -8,6 +8,20 @@ const CAR_COLORS = [
   0xff7a3d, 0xf1f5f9, 0x1e40af, 0xdb2777, 0x65a30d
 ];
 
+const SAVE_KEY = 'vice-city-career-v1';
+const DEFAULT_STATS = {
+  distance: 0, playtime: 0, missions: 0, crashes: 0, hits: 0,
+  wrecks: 0, escapes: 0, maxWanted: 0, cashEarned: 0, unlocked: []
+};
+const ACHIEVEMENTS = [
+  { id: 'first', name: 'FIRST SCORE', desc: 'Finish a job', reward: 500, test: s => s.missions >= 1 },
+  { id: 'haul', name: 'LONG HAUL', desc: 'Drive 10 km', reward: 1000, test: s => s.distance >= 10000 },
+  { id: 'wrecker', name: 'WRECKER', desc: 'Wreck 3 targets', reward: 1200, test: s => s.wrecks >= 3 },
+  { id: 'wanted', name: 'MOST WANTED', desc: 'Reach five stars', reward: 2000, test: s => s.maxWanted >= 5 },
+  { id: 'ghost', name: 'GHOST', desc: 'Escape the cops 5 times', reward: 1500, test: s => s.escapes >= 5 },
+  { id: 'legend', name: 'LOCAL LEGEND', desc: 'Earn $25,000 total', reward: 2500, test: s => s.cashEarned >= 25000 }
+];
+
 export class Game {
   constructor(scene, camera) {
     this.scene = scene;
@@ -145,6 +159,8 @@ export class Game {
     this.deadTimer = 0;
     this.policeCars = [];
     this.cash = 12450;
+    this.stats = this.loadCareer();
+    this.saveTimer = 0;
     this.keys = {};
     this.prevF = false;
     this.prevR = false;
@@ -259,6 +275,75 @@ export class Game {
     this._notifyTimer = setTimeout(() => { el.className = ''; }, 2200);
   }
 
+  // ---- Persistent career stats and achievements ----
+  loadCareer() {
+    const fresh = { ...DEFAULT_STATS, unlocked: [] };
+    try {
+      const raw = localStorage.getItem(SAVE_KEY);
+      if (!raw) return fresh;
+      const saved = JSON.parse(raw);
+      return { ...fresh, ...saved, unlocked: Array.isArray(saved.unlocked) ? saved.unlocked : [] };
+    } catch (_) {
+      return fresh;
+    }
+  }
+
+  saveCareer() {
+    try { localStorage.setItem(SAVE_KEY, JSON.stringify(this.stats)); } catch (_) { /* private mode */ }
+  }
+
+  earn(amount) {
+    this.cash += amount;
+    this.stats.cashEarned += amount;
+  }
+
+  checkAchievements() {
+    for (const a of ACHIEVEMENTS) {
+      if (this.stats.unlocked.includes(a.id) || !a.test(this.stats)) continue;
+      this.stats.unlocked.push(a.id);
+      this.earn(a.reward);
+      this.notify(`${a.name}  +$${a.reward}`, 'gold');
+      this.audio?.complete();
+    }
+  }
+
+  resetCareer() {
+    this.stats = { ...DEFAULT_STATS, unlocked: [] };
+    this.cash = 12450;
+    this.saveCareer();
+    this.refreshPauseStats();
+    this.notify('CAREER RESET', 'gold');
+  }
+
+  refreshPauseStats() {
+    const s = this.stats;
+    const grid = document.getElementById('career-stats');
+    if (grid) {
+      const mins = Math.floor(s.playtime / 60);
+      const secs = String(Math.floor(s.playtime % 60)).padStart(2, '0');
+      const rows = [
+        ['TIME PLAYED', `${mins}:${secs}`],
+        ['DISTANCE', `${(s.distance / 1000).toFixed(1)} km`],
+        ['JOBS DONE', s.missions],
+        ['CASH EARNED', `$${s.cashEarned.toLocaleString()}`],
+        ['CRASHES', s.crashes],
+        ['TARGETS WRECKED', s.wrecks],
+        ['COP ESCAPES', s.escapes],
+        ['TOP WANTED', `${s.maxWanted} ★`]
+      ];
+      grid.innerHTML = rows.map(([k, v]) =>
+        `<div class="career-stat"><span>${k}</span><b>${v}</b></div>`
+      ).join('');
+    }
+    const list = document.getElementById('career-achievements');
+    if (list) {
+      list.innerHTML = ACHIEVEMENTS.map(a => {
+        const got = s.unlocked.includes(a.id);
+        return `<div class="career-ach ${got ? 'got' : ''}"><b>${got ? '◆' : '◇'} ${a.name}</b><span>${a.desc} · $${a.reward}</span></div>`;
+      }).join('');
+    }
+  }
+
   initHUD() {
     const stars = document.getElementById('wanted');
     if (stars) {
@@ -274,6 +359,7 @@ export class Game {
         const action = btn.getAttribute('data-pause-action');
         if (action === 'resume') this.setPaused(false);
         else if (action === 'restart') this.restartGame();
+        else if (action === 'reset') this.resetCareer();
       });
     });
   }
@@ -285,7 +371,11 @@ export class Game {
     this.prevF = this.prevR = this.prevM = this.prevN = true;
     const screen = document.getElementById('pause-screen');
     if (screen) screen.classList.toggle('show', paused);
-    if (paused) this.audio?.silence();
+    if (paused) {
+      this.audio?.silence();
+      this.saveCareer();
+      this.refreshPauseStats();
+    }
     if (paused && document.pointerLockElement) document.exitPointerLock();
     if (!paused && !this.player.dead) {
       const canvas = document.getElementById('game-canvas');
@@ -424,12 +514,15 @@ export class Game {
   completeMission(label) {
     const m = this.mission;
     const bonus = this.missionBonus();
-    this.cash += bonus;
+    this.earn(bonus);
     m.active = false;
     m.completed++;
+    this.stats.missions++;
+    if (m.type === 'sweep') this.stats.wrecks++;
     this.missionCooldown = 4;
     this.missionMarker.visible = false;
     this.clearMissionTarget();
+    this.checkAchievements();
     this.notify(`${label}  +$${bonus}`, 'green');
     this.audio?.complete();
   }
@@ -467,7 +560,7 @@ export class Game {
         const dmg = Math.abs(this.player.speed) * 0.16;
         m.targetHP -= dmg;
         this.ramCooldown = 0.45;
-        this.cash += 20;
+        this.earn(20);
         this.shake = Math.min(2.4, 0.5 + dmg * 0.07);
         this.flashHit();
         this.audio?.crash();
@@ -479,7 +572,7 @@ export class Game {
       const cp = this.checkpoints[m.index];
       if (cp && Math.hypot(this.player.position.x - cp.x, this.player.position.z - cp.z) < 55) {
         const pay = m.type === 'courier' ? 350 : 400;
-        this.cash += pay;
+        this.earn(pay);
         m.index++;
         if (m.index >= this.checkpoints.length) {
           this.completeMission(m.type === 'courier' ? 'DELIVERY COMPLETE' : 'VICE RUN COMPLETE');
@@ -502,6 +595,8 @@ export class Game {
   addWanted(n) {
     this.wanted = Math.min(5, this.wanted + n);
     this.wantedTimer = 16;
+    this.stats.maxWanted = Math.max(this.stats.maxWanted, this.wanted);
+    this.checkAchievements();
     this.notify('WANTED LEVEL ' + this.wanted, 'pink');
     this.audio?.wanted();
   }
@@ -633,6 +728,7 @@ export class Game {
     this.player.update(dt, this.yaw, this.keys);
     if (this.player.collisionThisFrame && this.crashCooldown <= 0) {
       this.crashCooldown = 1.2;
+      this.stats.crashes++;
       this.shake = Math.min(2.8, 0.6 + this.player.collisionSpeed * 0.09);
       this.flashHit();
       this.notify('CRASH!  -$150', 'pink');
@@ -901,6 +997,7 @@ export class Game {
       if (dp < thresh && pv && Math.abs(this.player.speed) > 10) {
         p.alive = false;
         p.knocked = 6;
+        this.stats.hits++;
         this.addWanted(1);
         this.shake = Math.min(2.2, 0.5 + Math.abs(this.player.speed) * 0.05);
         this.notify('PEDESTRIAN HIT', 'pink');
@@ -916,9 +1013,20 @@ export class Game {
       if (this.wantedTimer <= 0) {
         this.wanted--;
         this.wantedTimer = 14;
+        if (this.wanted === 0) {
+          this.stats.escapes++;
+          this.checkAchievements();
+          this.notify('HEAT LOST', 'green');
+        }
         this.updateStars();
       }
     }
+
+    // ---- Career stats, flushed to storage periodically ----
+    this.stats.playtime += dt;
+    this.stats.distance += Math.abs(this.player.speed) * dt;
+    this.saveTimer += dt;
+    if (this.saveTimer > 5) { this.saveTimer = 0; this.saveCareer(); }
 
     // ---- Mission checkpoints ----
     this.updateMission(dt);
@@ -971,8 +1079,9 @@ export class Game {
     this.wantedTimer = 0;
     this.cash = Math.max(0, this.cash - 500);
     this.crashCooldown = 2;
+    this.saveCareer();
     this.keys = {};
-    this.prevF = this.prevR = true;
+    this.prevF = this.prevR = this.prevM = this.prevN = true;
     this.notify('HOSPITAL BILL  -$500', 'pink');
   }
 
