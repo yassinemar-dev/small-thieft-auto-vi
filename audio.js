@@ -176,6 +176,11 @@ export class GameAudio {
     }
   }
 
+  explosion() {
+    this.burst(0.55, 320);
+    this.tone(60, 0.6, 'sawtooth', 0.26);
+    this.tone(110, 0.35, 'triangle', 0.16, 0.05);
+  }
   crash() { this.burst(0.3, 750); this.tone(90, 0.22, 'triangle', 0.16); }
   hit() { this.burst(0.22, 1400); this.tone(180, 0.14, 'square', 0.08); }
   repair() { this.tone(520, 0.1, 'sine', 0.12); this.tone(780, 0.16, 'sine', 0.12, 0.09); }

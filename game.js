@@ -180,6 +180,9 @@ export class Game {
     this.checkpoints = [];
     this.missionCooldown = 0;
     this.ramCooldown = 0;
+    this.explosions = [];
+    this.burnCooldown = 0;
+    this.createExplosionTexture();
     this.createMissionMarker();
 
     window.addEventListener('keydown', (e) => {
@@ -191,6 +194,74 @@ export class Game {
 
     this.initHUD();
     this.startMission();
+  }
+
+  createExplosionTexture() {
+    const cv = document.createElement('canvas');
+    cv.width = cv.height = 128;
+    const c = cv.getContext('2d');
+    const g = c.createRadialGradient(64, 64, 2, 64, 64, 64);
+    g.addColorStop(0, 'rgba(255,255,235,1)');
+    g.addColorStop(0.25, 'rgba(255,190,70,.95)');
+    g.addColorStop(0.6, 'rgba(255,70,25,.55)');
+    g.addColorStop(1, 'rgba(120,20,0,0)');
+    c.fillStyle = g; c.fillRect(0, 0, 128, 128);
+    const tex = new THREE.CanvasTexture(cv);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    this.explosionTexture = tex;
+  }
+
+  spawnExplosion(x, z) {
+    const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: this.explosionTexture, transparent: true, opacity: 1,
+      depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false
+    }));
+    sprite.position.set(x, 18, z);
+    sprite.scale.setScalar(30);
+    this.scene.add(sprite);
+    this.explosions.push({ sprite, life: 0 });
+  }
+
+  /** Burning cars eventually explode, wreck in place and eject the player. */
+  updateWrecks(dt) {
+    for (const v of this.vehicles) {
+      const u = v.userData;
+      if (u.wrecked || u.stationary || (u.damage || 0) < 0.85) continue;
+      u.burnTime = (u.burnTime || 0) + dt;
+      if (v === this.player.currentVehicle) {
+        this.burnCooldown -= dt;
+        if (this.burnCooldown <= 0) {
+          this.player.damage(6);
+          this.burnCooldown = 0.6;
+        }
+      }
+      if (u.burnTime < 2.8) continue;
+      u.wrecked = true;
+      u.stationary = true;
+      u.aiSpeed = 0;
+      u.paint.color.setHex(0x1c1c22);
+      this.spawnExplosion(v.position.x, v.position.z);
+      this.audio?.explosion();
+      this.shake = Math.min(3.5, v === this.player.currentVehicle ? 3.5 : 2.4);
+      if (v === this.player.currentVehicle) {
+        this.player.damage(35);
+        this.player.exitVehicle();
+        this.notify('VEHICLE DESTROYED', 'pink');
+      }
+    }
+
+    for (let i = this.explosions.length - 1; i >= 0; i--) {
+      const e = this.explosions[i];
+      e.life += dt;
+      const k = e.life / 0.75;
+      e.sprite.scale.setScalar(30 + k * 190);
+      e.sprite.material.opacity = Math.max(0, 1 - k);
+      if (k >= 1) {
+        this.scene.remove(e.sprite);
+        e.sprite.material.dispose();
+        this.explosions.splice(i, 1);
+      }
+    }
   }
 
   /** A single glowing beacon reused for every checkpoint. */
@@ -1028,7 +1099,8 @@ export class Game {
     this.saveTimer += dt;
     if (this.saveTimer > 5) { this.saveTimer = 0; this.saveCareer(); }
 
-    // ---- Mission checkpoints ----
+    // ---- Burning cars and mission objectives ----
+    this.updateWrecks(dt);
     this.updateMission(dt);
 
     // ---- Camera ----

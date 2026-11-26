@@ -30,7 +30,7 @@ Open <http://localhost:5173/>. Use `npm run build` for a production bundle.
 - **Three rotating jobs** — Vice Run (five checkpoints), Courier (three pickup/drop-off stops) and Takedown (ram a marked car until wrecked), each with per-objective cash, a decaying time bonus and automatic rotation after completion. Press `M` to skip to the next job.
 - **Wanted system** — crashes and pedestrian hits raise up to five stars; nearby traffic turns into pursuing police cruisers with flashing red/blue lightbars and ramming AI.
 - **Death and respawn** — a `WASTED` screen, hospital bill, cleared wanted level and respawn near the starter car.
-- **Driving model** — acceleration, reverse, speed-sensitive steering, handbrake, body roll, wheel spin, collisions, brake lights, night-reactive headlamps with a spotlight and ground light pool, damage tint and engine smoke.
+- **Driving model** — acceleration, reverse, speed-sensitive steering, handbrake, body roll, wheel spin, collisions, brake lights, night-reactive headlamps, damage tint, engine smoke, and engine fires that end in an explosion, a wrecked car and a forced exit.
 - **Living city** — 43 lane-following AI cars with intersection turns and traffic lights, 64 sidewalk pedestrians who dodge cars and panic-run from fast vehicles or police.
 - **Performance-conscious rendering** — instanced cars and pedestrians, instanced props/decals, MSAA, half-float post-processing, subtle film grade and speed-sensitive motion blur.
 - **Atmosphere** — a six-minute day-night cycle from golden hour through dusk to blue hour, driving sky colours, fog, sun angle, exposure, bloom and window/neon brightness; plus drifting clouds, lens flare, palms, parks, awnings, rooftop props and zebra crossings.

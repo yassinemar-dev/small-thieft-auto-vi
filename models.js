@@ -104,6 +104,29 @@ export class CarFleet {
     this.smoke.frustumCulled = false;
     scene.add(this.smoke);
 
+    // Engine fires on heavily damaged cars, sharing the one-instanced-points approach
+    const flameCv = document.createElement('canvas');
+    flameCv.width = flameCv.height = 64;
+    const fc = flameCv.getContext('2d');
+    const fg = fc.createRadialGradient(32, 32, 2, 32, 32, 32);
+    fg.addColorStop(0, 'rgba(255,250,200,1)');
+    fg.addColorStop(0.3, 'rgba(255,160,50,.9)');
+    fg.addColorStop(0.7, 'rgba(255,60,20,.45)');
+    fg.addColorStop(1, 'rgba(180,20,0,0)');
+    fc.fillStyle = fg; fc.fillRect(0, 0, 64, 64);
+    const flameTex = new THREE.CanvasTexture(flameCv);
+    flameTex.colorSpace = THREE.SRGBColorSpace;
+    this.firePos = new Float32Array(cars.length * 3);
+    for (let i = 0; i < cars.length; i++) this.firePos[i * 3 + 1] = -1000;
+    this.fireGeo = new THREE.BufferGeometry();
+    this.fireGeo.setAttribute('position', new THREE.BufferAttribute(this.firePos, 3));
+    this.fire = new THREE.Points(this.fireGeo, new THREE.PointsMaterial({
+      map: flameTex, size: 34, sizeAttenuation: true, transparent: true,
+      opacity: 0.9, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false
+    }));
+    this.fire.frustumCulled = false;
+    scene.add(this.fire);
+
     this.sync();
   }
 
@@ -162,6 +185,19 @@ export class CarFleet {
       } else {
         this.smokePos[i * 3 + 1] = -1000;
       }
+
+      // Critical damage lights up the engine bay with a flickering fire point
+      if (damage >= 0.85 && !car.userData.wrecked) {
+        this.local.position.set(30, 12, 0);
+        this.local.updateMatrix();
+        this.matrix.multiplyMatrices(car.matrix, this.shellMatrix).multiply(this.local.matrix);
+        const flicker = 0.65 + Math.sin(t * 17 + i * 3) * 0.35;
+        this.firePos[i * 3] = this.matrix.elements[12] + Math.sin(t * 9 + i) * 2;
+        this.firePos[i * 3 + 1] = this.matrix.elements[13] + flicker * 4;
+        this.firePos[i * 3 + 2] = this.matrix.elements[14] + Math.cos(t * 7 + i) * 2;
+      } else {
+        this.firePos[i * 3 + 1] = -1000;
+      }
     });
     this.parts.forEach(part => {
       part.mesh.instanceMatrix.needsUpdate = true;
@@ -170,6 +206,7 @@ export class CarFleet {
       }
     });
     this.smokeGeo.attributes.position.needsUpdate = true;
+    this.fireGeo.attributes.position.needsUpdate = true;
   }
 }
 
