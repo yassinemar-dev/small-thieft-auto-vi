@@ -257,6 +257,7 @@ export class Game {
     this.prevF = this.prevR = this.prevM = true;
     const screen = document.getElementById('pause-screen');
     if (screen) screen.classList.toggle('show', paused);
+    if (paused) this.audio?.silence();
     if (paused && document.pointerLockElement) document.exitPointerLock();
     if (!paused && !this.player.dead) {
       const canvas = document.getElementById('game-canvas');
@@ -351,9 +352,11 @@ export class Game {
         this.missionCooldown = 4;
         this.missionMarker.visible = false;
         this.notify(`MISSION COMPLETE  +$${bonus}`, 'green');
+        this.audio?.complete();
       } else {
         this.placeMissionMarker();
         this.notify(`CHECKPOINT ${m.index}/${this.checkpoints.length}  +$400`, 'green');
+        this.audio?.checkpoint();
       }
     }
     if (this.missionMarker.visible) {
@@ -368,6 +371,7 @@ export class Game {
     this.wanted = Math.min(5, this.wanted + n);
     this.wantedTimer = 16;
     this.notify('WANTED LEVEL ' + this.wanted, 'pink');
+    this.audio?.wanted();
   }
 
   /** Promote nearby traffic into a pursuing police fleet for the wanted level. */
@@ -425,6 +429,7 @@ export class Game {
         pv.userData.damage = Math.min(1, (pv.userData.damage || 0) + 0.12);
         this.shake = Math.min(3, 1.2 + Math.abs(this.player.speed) * 0.04);
         this.flashHit();
+        this.audio?.crash();
         this.player.speed *= 0.7;
       }
     }
@@ -471,6 +476,7 @@ export class Game {
       if (damaged) {
         this.player.repair();
         this.notify('REPAIRED', 'green');
+        this.audio?.repair();
       } else {
         this.notify('NO DAMAGE');
       }
@@ -491,6 +497,7 @@ export class Game {
       this.shake = Math.min(2.8, 0.6 + this.player.collisionSpeed * 0.09);
       this.flashHit();
       this.notify('CRASH!  -$150', 'pink');
+      this.audio?.crash();
       this.cash = Math.max(0, this.cash - 150);
     }
 
@@ -756,6 +763,7 @@ export class Game {
         this.addWanted(1);
         this.shake = Math.min(2.2, 0.5 + Math.abs(this.player.speed) * 0.05);
         this.notify('PEDESTRIAN HIT', 'pink');
+        this.audio?.hit();
       }
     });
     this.crowd.sync();
@@ -792,6 +800,7 @@ export class Game {
     const el = document.getElementById('death-screen');
     if (el) el.classList.add('show');
     this.notify('WASTED', 'pink');
+    this.audio?.death();
   }
 
   /** Respawn near the starter car, clear the heat and charge a hospital bill. */

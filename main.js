@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { Game } from './game.js';
+import { GameAudio } from './audio.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { AfterimagePass } from 'three/addons/postprocessing/AfterimagePass.js';
@@ -216,6 +217,12 @@ window.__game = game;
 window.__scene = scene;
 window.__camera = camera;
 
+const audio = new GameAudio();
+game.audio = audio;
+window.__audio = audio;
+window.addEventListener('pointerdown', () => audio.init(), { passive: true });
+window.addEventListener('keydown', () => audio.init());
+
 window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
@@ -268,6 +275,7 @@ function gameLoop(timestamp) {
     camera.fov += (targetFov - camera.fov) * Math.min(1, dt * 4);
     camera.updateProjectionMatrix();
     grade.uniforms.time.value += dt;
+    audio.update(game, dt);
   }
 
   composer.render();
