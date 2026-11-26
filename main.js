@@ -33,6 +33,46 @@ const sky = new THREE.Mesh(skyGeo, new THREE.MeshBasicMaterial({
 }));
 scene.add(sky);
 
+// ---- Drifting sunset clouds (children of the sky dome, so they follow camera) ----
+function cloudTexture() {
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = 256;
+  const c = cv.getContext('2d');
+  for (let i = 0; i < 9; i++) {
+    const x = 60 + Math.random() * 136;
+    const y = 90 + Math.random() * 76;
+    const r = 34 + Math.random() * 48;
+    const g = c.createRadialGradient(x, y, 0, x, y, r);
+    g.addColorStop(0, 'rgba(255,246,238,0.55)');
+    g.addColorStop(0.55, 'rgba(255,214,206,0.24)');
+    g.addColorStop(1, 'rgba(255,180,180,0)');
+    c.fillStyle = g;
+    c.fillRect(0, 0, 256, 256);
+  }
+  const tex = new THREE.CanvasTexture(cv);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+const cloudTex = cloudTexture();
+const cloudGroup = new THREE.Group();
+sky.add(cloudGroup);
+for (let i = 0; i < 14; i++) {
+  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: cloudTex,
+    transparent: true,
+    opacity: 0.38 + Math.random() * 0.18,
+    depthWrite: false,
+    fog: false,
+    toneMapped: false,
+    color: i % 3 === 0 ? 0xffd8cc : 0xfff4ea
+  }));
+  const a = Math.random() * Math.PI * 2;
+  const r = 1300 + Math.random() * 1500;
+  sprite.position.set(Math.cos(a) * r, 480 + Math.random() * 620, Math.sin(a) * r);
+  sprite.scale.set(620 + Math.random() * 520, 190 + Math.random() * 130, 1);
+  cloudGroup.add(sprite);
+}
+
 // ---- Sun + lens flare ----
 const sun = new THREE.Mesh(
   new THREE.SphereGeometry(120, 24, 24),
@@ -178,6 +218,7 @@ function gameLoop(timestamp) {
   game.draw();
 
   sky.position.copy(camera.position);
+  cloudGroup.rotation.y += dt * 0.004;
   sun.position.set(camera.position.x - 1200, 300, camera.position.z - 1800);
 
   // Speed-sensitive motion blur + subtle FOV kick

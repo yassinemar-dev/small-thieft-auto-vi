@@ -28,6 +28,6 @@ Then open http://localhost:5173/
 - Detailed articulated player character with walk/run and seated driving animation
 - Drivable vehicles with steering, acceleration, handbrake and collisions
 - AI traffic and pedestrians with collisions and wanted levels
-- City grid with buildings, roads, sidewalks, palm trees, streetlights and windows
-- Vice City sunset sky, lens flare and speed-sensitive motion blur
+- City grid with textured roads/sidewalks, zebra crossings, art-deco floor bands, rooftop props, palm trees, shrubs and streetlights
+- Vice City sunset sky with drifting clouds, distant hills, lens flare and speed-sensitive motion blur
 - GTA VI-style HUD: circular minimap, wanted stars, health/armor bars and speedometer

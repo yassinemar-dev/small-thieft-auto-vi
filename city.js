@@ -6,6 +6,66 @@ const VICE_PALETTE = [
   0xb8c8dd, 0xe8b0a0
 ];
 
+/** Small procedural canvas texture helper — keeps the city asset-free. */
+function canvasTexture(size, draw, repeatX = 1, repeatY = 1) {
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = size;
+  const ctx = cv.getContext('2d');
+  draw(ctx, size);
+  const tex = new THREE.CanvasTexture(cv);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(repeatX, repeatY);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = 4;
+  return tex;
+}
+
+function asphaltTexture() {
+  return canvasTexture(256, (c, s) => {
+    c.fillStyle = '#252b36';
+    c.fillRect(0, 0, s, s);
+    for (let i = 0; i < 3200; i++) {
+      const v = Math.random();
+      c.fillStyle = v > 0.5 ? `rgba(255,255,255,${0.015 + Math.random() * 0.035})`
+                            : `rgba(0,0,0,${0.02 + Math.random() * 0.06})`;
+      const x = Math.random() * s, y = Math.random() * s;
+      c.fillRect(x, y, 1 + Math.random() * 2, 1 + Math.random() * 2);
+    }
+    // Faint tar seams / cracks
+    c.strokeStyle = 'rgba(10,12,18,0.35)';
+    c.lineWidth = 1;
+    for (let i = 0; i < 7; i++) {
+      c.beginPath();
+      let x = Math.random() * s, y = Math.random() * s;
+      c.moveTo(x, y);
+      for (let k = 0; k < 5; k++) {
+        x += (Math.random() - 0.5) * 50;
+        y += (Math.random() - 0.5) * 50;
+        c.lineTo(x, y);
+      }
+      c.stroke();
+    }
+  }, 2, 8);
+}
+
+function sidewalkTexture() {
+  return canvasTexture(128, (c, s) => {
+    c.fillStyle = '#9ba4ae';
+    c.fillRect(0, 0, s, s);
+    for (let i = 0; i < 900; i++) {
+      c.fillStyle = Math.random() > 0.5 ? 'rgba(255,255,255,.05)' : 'rgba(40,48,56,.07)';
+      c.fillRect(Math.random() * s, Math.random() * s, 2, 2);
+    }
+    c.strokeStyle = 'rgba(58,68,78,.45)';
+    c.lineWidth = 2;
+    for (let i = 0; i <= 4; i++) {
+      const p = (i / 4) * s;
+      c.beginPath(); c.moveTo(p, 0); c.lineTo(p, s); c.stroke();
+      c.beginPath(); c.moveTo(0, p); c.lineTo(s, p); c.stroke();
+    }
+  }, 5, 5);
+}
+
 export class City {
   constructor() {
     this.buildings = [];
@@ -63,8 +123,8 @@ export class City {
     this.group = new THREE.Group();
     const dummy = new THREE.Object3D();
 
-    // ---- Asphalt ----
-    const asphalt = new THREE.MeshStandardMaterial({ color: 0x1c2230, roughness: 1 });
+    // ---- Asphalt (subtle grain + tar seams) ----
+    const asphalt = new THREE.MeshStandardMaterial({ map: asphaltTexture(), roughness: 1 });
     const roadMesh = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1), asphalt, this.roads.length);
     this.roads.forEach((r, i) => {
       dummy.position.set(r.x + r.width / 2, 0.02, r.z + r.height / 2);
@@ -78,8 +138,34 @@ export class City {
     roadMesh.frustumCulled = false;
     this.group.add(roadMesh);
 
+    // ---- Solid road edge lines ----
+    const edgeMat = new THREE.MeshStandardMaterial({
+      color: 0xe8e0c8, roughness: 1, transparent: true, opacity: 0.45
+    });
+    const edges = [];
+    this.roads.forEach(r => {
+      if (r.width < r.height) { // north/south road
+        edges.push({ x: r.x + 2.5, z: r.z + r.height / 2, w: 1.6, d: r.height });
+        edges.push({ x: r.x + r.width - 2.5, z: r.z + r.height / 2, w: 1.6, d: r.height });
+      } else { // east/west road
+        edges.push({ x: r.x + r.width / 2, z: r.z + 2.5, w: r.width, d: 1.6 });
+        edges.push({ x: r.x + r.width / 2, z: r.z + r.height - 2.5, w: r.width, d: 1.6 });
+      }
+    });
+    const edgeMesh = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1), edgeMat, edges.length);
+    edges.forEach((e, i) => {
+      dummy.position.set(e.x, 0.055, e.z);
+      dummy.rotation.set(-Math.PI / 2, 0, 0);
+      dummy.scale.set(e.w, e.d, 1);
+      dummy.updateMatrix();
+      edgeMesh.setMatrixAt(i, dummy.matrix);
+    });
+    edgeMesh.instanceMatrix.needsUpdate = true;
+    edgeMesh.frustumCulled = false;
+    this.group.add(edgeMesh);
+
     // ---- Sidewalks (thin raised slabs around each block) ----
-    const walkMat = new THREE.MeshStandardMaterial({ color: 0x8892a0, roughness: 0.95 });
+    const walkMat = new THREE.MeshStandardMaterial({ map: sidewalkTexture(), roughness: 0.95 });
     const walkMesh = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), walkMat, this.buildings.length);
     this.buildings.forEach((b, i) => {
       const pad = 8;
@@ -94,20 +180,22 @@ export class City {
     walkMesh.frustumCulled = false;
     this.group.add(walkMesh);
 
-    // ---- Lane dashes ----
-    const dashMat = new THREE.MeshStandardMaterial({ color: 0xffd76b, emissive: 0x554400, emissiveIntensity: 0.3 });
+    // ---- Lane dashes (both directions now use the correct orientation) ----
+    const dashMat = new THREE.MeshStandardMaterial({
+      color: 0xffd76b, emissive: 0x554400, emissiveIntensity: 0.3
+    });
     const dashes = [];
     for (let i = -10; i <= 10; i++) {
       for (let k = -10; k <= 10; k++) {
         for (let t = -2; t <= 2; t++) {
-          dashes.push({ x: i * 200, z: k * 200 + t * 40, w: 12, d: 2, rot: 0 });
-          dashes.push({ x: i * 200 + t * 40, z: k * 200, w: 2, d: 12, rot: 0 });
+          dashes.push({ x: i * 200, z: k * 200 + t * 40, w: 12, d: 2 });
+          dashes.push({ x: i * 200 + t * 40, z: k * 200, w: 12, d: 2 });
         }
       }
     }
     const dashMesh = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1), dashMat, dashes.length);
     dashes.forEach((d, i) => {
-      dummy.position.set(d.x, 0.06, d.z);
+      dummy.position.set(d.x, 0.065, d.z);
       dummy.rotation.set(-Math.PI / 2, 0, 0);
       dummy.scale.set(d.w, d.d, 1);
       dummy.updateMatrix();
@@ -116,6 +204,31 @@ export class City {
     dashMesh.instanceMatrix.needsUpdate = true;
     dashMesh.frustumCulled = false;
     this.group.add(dashMesh);
+
+    // ---- Zebra crossings at every intersection ----
+    const crossMat = new THREE.MeshStandardMaterial({
+      color: 0xf3eee0, roughness: 1, transparent: true, opacity: 0.72
+    });
+    const crossings = [];
+    for (let i = -10; i <= 10; i++) {
+      for (let j = -10; j <= 10; j++) {
+        for (let k = -2; k <= 2; k++) {
+          crossings.push({ x: i * 200, z: j * 200 + k * 8, w: 30, d: 4 });
+          crossings.push({ x: i * 200 + k * 8, z: j * 200, w: 4, d: 30 });
+        }
+      }
+    }
+    const crossMesh = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1), crossMat, crossings.length);
+    crossings.forEach((c, i) => {
+      dummy.position.set(c.x, 0.075, c.z);
+      dummy.rotation.set(-Math.PI / 2, 0, 0);
+      dummy.scale.set(c.w, c.d, 1);
+      dummy.updateMatrix();
+      crossMesh.setMatrixAt(i, dummy.matrix);
+    });
+    crossMesh.instanceMatrix.needsUpdate = true;
+    crossMesh.frustumCulled = false;
+    this.group.add(crossMesh);
 
     // ---- Buildings ----
     const buildingMat = new THREE.MeshStandardMaterial({ roughness: 0.65, metalness: 0.15 });
@@ -136,12 +249,40 @@ export class City {
     buildingMesh.frustumCulled = false;
     this.group.add(buildingMesh);
 
-    // ---- Rooftop caps (art-deco detail) ----
+    // ---- Art-deco floor bands (one thin ledge per storey) ----
+    const bands = [];
+    this.buildings.forEach(b => {
+      for (let f = 1; f <= b.floors; f++) {
+        bands.push({
+          x: b.x + b.width / 2,
+          y: 2.4 + f * 11,
+          z: b.z + b.depth / 2,
+          w: b.width + 2.5,
+          d: b.depth + 2.5
+        });
+      }
+    });
+    const bandMat = new THREE.MeshStandardMaterial({ color: 0xdcd6c8, roughness: 0.85 });
+    const bandMesh = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), bandMat, bands.length);
+    bands.forEach((b, i) => {
+      dummy.position.set(b.x, b.y, b.z);
+      dummy.rotation.set(0, 0, 0);
+      dummy.scale.set(b.w, 0.9, b.d);
+      dummy.updateMatrix();
+      bandMesh.setMatrixAt(i, dummy.matrix);
+    });
+    bandMesh.instanceMatrix.needsUpdate = true;
+    bandMesh.castShadow = true;
+    bandMesh.frustumCulled = false;
+    this.group.add(bandMesh);
+
+    // ---- Rooftop caps + AC units + a few water towers ----
+    const h = b => b.floors * 11;
     const capMat = new THREE.MeshStandardMaterial({ color: 0xe6e9f0, roughness: 0.6 });
     const capMesh = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), capMat, this.buildings.length);
     this.buildings.forEach((b, i) => {
-      const h = b.floors * 11;
-      dummy.position.set(b.x + b.width / 2, h + 4, b.z + b.depth / 2);
+      dummy.position.set(b.x + b.width / 2, h(b) + 4, b.z + b.depth / 2);
+      dummy.rotation.set(0, 0, 0);
       dummy.scale.set(b.width * 0.6, 3, b.depth * 0.6);
       dummy.updateMatrix();
       capMesh.setMatrixAt(i, dummy.matrix);
@@ -151,31 +292,88 @@ export class City {
     capMesh.frustumCulled = false;
     this.group.add(capMesh);
 
-    // ---- Windows (two facades, warm/cool mix) ----
+    const acUnits = [], tanks = [];
+    this.buildings.forEach(b => {
+      const count = 1 + ((Math.random() * 3) | 0);
+      for (let k = 0; k < count; k++) {
+        acUnits.push({
+          x: b.x + 18 + Math.random() * (b.width - 36),
+          y: h(b) + 5.5,
+          z: b.z + 18 + Math.random() * (b.depth - 36),
+          s: 7 + Math.random() * 5
+        });
+      }
+      if (b.floors > 4 && Math.random() > 0.55) {
+        tanks.push({
+          x: b.x + b.width * (0.3 + Math.random() * 0.4),
+          y: h(b) + 12,
+          z: b.z + b.depth * (0.3 + Math.random() * 0.4)
+        });
+      }
+    });
+    const acMat = new THREE.MeshStandardMaterial({ color: 0x8792a0, roughness: 0.8, metalness: 0.2 });
+    const acMesh = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), acMat, acUnits.length);
+    acUnits.forEach((a, i) => {
+      dummy.position.set(a.x, a.y, a.z);
+      dummy.rotation.set(0, 0, 0);
+      dummy.scale.set(a.s, 5, a.s * 0.8);
+      dummy.updateMatrix();
+      acMesh.setMatrixAt(i, dummy.matrix);
+    });
+    acMesh.instanceMatrix.needsUpdate = true;
+    acMesh.castShadow = true;
+    acMesh.frustumCulled = false;
+    this.group.add(acMesh);
+
+    if (tanks.length) {
+      const tankMat = new THREE.MeshStandardMaterial({ color: 0x8b5a4a, roughness: 0.9 });
+      const tankMesh = new THREE.InstancedMesh(new THREE.CylinderGeometry(1, 1, 1, 10), tankMat, tanks.length);
+      tanks.forEach((t, i) => {
+        dummy.position.set(t.x, t.y, t.z);
+        dummy.rotation.set(0, 0, 0);
+        dummy.scale.set(6, 12, 6);
+        dummy.updateMatrix();
+        tankMesh.setMatrixAt(i, dummy.matrix);
+      });
+      tankMesh.instanceMatrix.needsUpdate = true;
+      tankMesh.castShadow = true;
+      tankMesh.frustumCulled = false;
+      this.group.add(tankMesh);
+    }
+
+    // ---- Windows on all four facades, warm/cool mix ----
     const winGeo = new THREE.BoxGeometry(6, 6, 0.6);
-    const winWarm = new THREE.MeshStandardMaterial({ color: 0xffe9a8, emissive: 0xffc86b, emissiveIntensity: 0.9 });
-    const winCool = new THREE.MeshStandardMaterial({ color: 0xa9e8ff, emissive: 0x4fb8ff, emissiveIntensity: 0.7 });
+    const winWarm = new THREE.MeshStandardMaterial({
+      color: 0xffe9a8, emissive: 0xffc86b, emissiveIntensity: 0.9
+    });
+    const winCool = new THREE.MeshStandardMaterial({
+      color: 0xa9e8ff, emissive: 0x4fb8ff, emissiveIntensity: 0.7
+    });
     const winWarmList = [], winCoolList = [];
     this.buildings.forEach(b => {
-      const h = b.floors * 11;
+      const bh = h(b);
       const cols = Math.max(2, Math.floor(b.width / 24));
       for (let fy = 0; fy < b.floors; fy++) {
+        const y = 9 + fy * 11;
         for (let fx = 0; fx < cols; fx++) {
-          if (Math.random() > 0.35) {
-            const list = Math.random() > 0.55 ? winWarmList : winCoolList;
-            const x = b.x + 16 + fx * 24;
-            const y = 9 + fy * 11;
-            list.push({ x, y, z: b.z + b.depth + 0.5 });
-            if (Math.random() > 0.6) list.push({ x, y, z: b.z - 0.5 });
-          }
+          if (Math.random() < 0.35) continue;
+          const list = Math.random() > 0.55 ? winWarmList : winCoolList;
+          const x = b.x + 16 + fx * 24;
+          const z = b.z + 16 + fx * 24;
+          // front / back
+          list.push({ x, y, z: b.z + b.depth + 0.5, rot: 0 });
+          if (Math.random() > 0.6) list.push({ x, y, z: b.z - 0.5, rot: 0 });
+          // left / right (rotated boxes, more SA-style side detail)
+          if (Math.random() > 0.45) list.push({ x: b.x - 0.5, y, z, rot: Math.PI / 2 });
+          if (Math.random() > 0.45) list.push({ x: b.x + b.width + 0.5, y, z, rot: Math.PI / 2 });
         }
       }
     });
-    [ [winWarmList, winWarm], [winCoolList, winCool] ].forEach(([list, mat]) => {
+    [[winWarmList, winWarm], [winCoolList, winCool]].forEach(([list, mat]) => {
       const m = new THREE.InstancedMesh(winGeo, mat, list.length);
       list.forEach((w, i) => {
         dummy.position.set(w.x, w.y, w.z);
-        dummy.rotation.set(0, 0, 0);
+        dummy.rotation.set(0, w.rot, 0);
         dummy.scale.set(1, 1, 1);
         dummy.updateMatrix();
         m.setMatrixAt(i, dummy.matrix);
@@ -185,19 +383,34 @@ export class City {
       this.group.add(m);
     });
 
-    // ---- Palm trees (Vice City signature) ----
+    // ---- Palm trees + shrubs (Vice City signature greenery) ----
     const trunkMat = new THREE.MeshStandardMaterial({ color: 0x6b4f35, roughness: 1 });
-    const leafMat = new THREE.MeshStandardMaterial({ color: 0x2e8b57, roughness: 0.9, side: THREE.DoubleSide });
-    const palms = [];
+    const leafMat = new THREE.MeshStandardMaterial({
+      color: 0x2e8b57, roughness: 0.9, side: THREE.DoubleSide
+    });
+    const palms = [], shrubs = [];
     for (let i = -9; i <= 9; i++) {
       for (let j = -9; j <= 9; j++) {
         if ((i + j) % 2 === 0 && Math.random() > 0.45) {
-          palms.push({ x: i * 200 + 20, z: j * 200 + 20, h: 18 + Math.random() * 12 });
+          const px = i * 200 + 20, pz = j * 200 + 20;
+          palms.push({ x: px, z: pz, h: 18 + Math.random() * 12 });
+          for (let k = 0; k < 3; k++) {
+            const a = Math.random() * Math.PI * 2;
+            shrubs.push({
+              x: px + Math.cos(a) * (10 + Math.random() * 9),
+              z: pz + Math.sin(a) * (10 + Math.random() * 9),
+              s: 3 + Math.random() * 3
+            });
+          }
         }
       }
     }
-    const trunkMesh = new THREE.InstancedMesh(new THREE.CylinderGeometry(1, 1.6, 1, 7), trunkMat, palms.length);
-    const leafMesh = new THREE.InstancedMesh(new THREE.ConeGeometry(1, 1, 5), leafMat, palms.length * 5);
+    const trunkMesh = new THREE.InstancedMesh(
+      new THREE.CylinderGeometry(1, 1.6, 1, 7), trunkMat, palms.length
+    );
+    const leafMesh = new THREE.InstancedMesh(
+      new THREE.ConeGeometry(1, 1, 5), leafMat, palms.length * 5
+    );
     let li = 0;
     palms.forEach((p, i) => {
       dummy.position.set(p.x, p.h / 2, p.z);
@@ -221,17 +434,45 @@ export class City {
     leafMesh.frustumCulled = false;
     this.group.add(trunkMesh, leafMesh);
 
+    if (shrubs.length) {
+      const shrubMat = new THREE.MeshStandardMaterial({
+        color: 0x2f7d4f, roughness: 1, flatShading: true
+      });
+      const shrubMesh = new THREE.InstancedMesh(
+        new THREE.IcosahedronGeometry(1, 0), shrubMat, shrubs.length
+      );
+      shrubs.forEach((s, i) => {
+        dummy.position.set(s.x, s.s * 0.7 + 2.4, s.z);
+        dummy.rotation.set(Math.random(), Math.random(), Math.random());
+        dummy.scale.set(s.s, s.s * 0.8, s.s);
+        dummy.updateMatrix();
+        shrubMesh.setMatrixAt(i, dummy.matrix);
+      });
+      shrubMesh.instanceMatrix.needsUpdate = true;
+      shrubMesh.castShadow = true;
+      shrubMesh.frustumCulled = false;
+      this.group.add(shrubMesh);
+    }
+
     // ---- Streetlights ----
-    const bulbMat = new THREE.MeshStandardMaterial({ color: 0xfff0c0, emissive: 0xffd070, emissiveIntensity: 1.6 });
-    const poleMat = new THREE.MeshStandardMaterial({ color: 0x3a4050, metalness: 0.6, roughness: 0.5 });
+    const bulbMat = new THREE.MeshStandardMaterial({
+      color: 0xfff0c0, emissive: 0xffd070, emissiveIntensity: 1.6
+    });
+    const poleMat = new THREE.MeshStandardMaterial({
+      color: 0x3a4050, metalness: 0.6, roughness: 0.5
+    });
     const lights = [];
     for (let i = -9; i <= 9; i += 2) {
       for (let j = -9; j <= 9; j++) {
         lights.push({ x: i * 200 + 20, z: j * 200 - 20 });
       }
     }
-    const poleMesh = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.7, 0.9, 1, 6), poleMat, lights.length);
-    const bulbMesh = new THREE.InstancedMesh(new THREE.SphereGeometry(1.6, 8, 8), bulbMat, lights.length);
+    const poleMesh = new THREE.InstancedMesh(
+      new THREE.CylinderGeometry(0.7, 0.9, 1, 6), poleMat, lights.length
+    );
+    const bulbMesh = new THREE.InstancedMesh(
+      new THREE.SphereGeometry(1.6, 8, 8), bulbMat, lights.length
+    );
     lights.forEach((l, i) => {
       dummy.position.set(l.x, 9, l.z);
       dummy.rotation.set(0, 0, 0);
@@ -248,6 +489,38 @@ export class City {
     poleMesh.frustumCulled = false;
     bulbMesh.frustumCulled = false;
     this.group.add(poleMesh, bulbMesh);
+
+    // ---- Distant State-of-San-Andreas-style hills on the horizon ----
+    const hills = [];
+    for (let i = 0; i < 28; i++) {
+      const a = (i / 28) * Math.PI * 2 + (Math.random() - 0.5) * 0.16;
+      const r = 2650 + Math.random() * 500;
+      const w = 320 + Math.random() * 420;
+      const hh = 180 + Math.random() * 260;
+      hills.push({
+        x: Math.cos(a) * r,
+        z: Math.sin(a) * r,
+        w, hh, d: w * (0.7 + Math.random() * 0.6)
+      });
+    }
+    const hillMat = new THREE.MeshStandardMaterial({
+      color: 0x75637f, roughness: 1, flatShading: true
+    });
+    const hillMesh = new THREE.InstancedMesh(
+      new THREE.IcosahedronGeometry(1, 1), hillMat, hills.length
+    );
+    hills.forEach((hill, i) => {
+      dummy.position.set(hill.x, hill.hh * 0.28, hill.z);
+      dummy.rotation.set(0, Math.random() * Math.PI, 0);
+      dummy.scale.set(hill.w, hill.hh, hill.d);
+      dummy.updateMatrix();
+      hillMesh.setMatrixAt(i, dummy.matrix);
+      hillMesh.setColorAt(i, new THREE.Color().setHSL(0.78, 0.16, 0.32 + Math.random() * 0.1));
+    });
+    hillMesh.instanceMatrix.needsUpdate = true;
+    if (hillMesh.instanceColor) hillMesh.instanceColor.needsUpdate = true;
+    hillMesh.frustumCulled = false;
+    this.group.add(hillMesh);
 
     scene.add(this.group);
     return this.group;

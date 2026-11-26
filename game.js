@@ -13,10 +13,36 @@ export class Game {
     this.scene = scene;
     this.camera = camera;
 
-    // Ground
+    // Ground — procedural grass/dirt so the lots feel more San Andreas-like
+    const groundCv = document.createElement('canvas');
+    groundCv.width = groundCv.height = 256;
+    const gc = groundCv.getContext('2d');
+    gc.fillStyle = '#426136';
+    gc.fillRect(0, 0, 256, 256);
+    const patches = ['#4d703c', '#38562f', '#6a6a42', '#6b5a42'];
+    for (let i = 0; i < 70; i++) {
+      gc.fillStyle = patches[(Math.random() * patches.length) | 0];
+      gc.globalAlpha = 0.18 + Math.random() * 0.22;
+      gc.beginPath();
+      gc.ellipse(Math.random() * 256, Math.random() * 256,
+        12 + Math.random() * 38, 8 + Math.random() * 26,
+        Math.random() * Math.PI, 0, Math.PI * 2);
+      gc.fill();
+    }
+    gc.globalAlpha = 1;
+    for (let i = 0; i < 2200; i++) {
+      gc.fillStyle = Math.random() > 0.5 ? 'rgba(255,255,255,.05)' : 'rgba(0,0,0,.06)';
+      gc.fillRect(Math.random() * 256, Math.random() * 256, 2, 2);
+    }
+    const groundTex = new THREE.CanvasTexture(groundCv);
+    groundTex.wrapS = groundTex.wrapT = THREE.RepeatWrapping;
+    groundTex.repeat.set(30, 30);
+    groundTex.colorSpace = THREE.SRGBColorSpace;
+    groundTex.anisotropy = 4;
+
     const ground = new THREE.Mesh(
       new THREE.PlaneGeometry(6000, 6000),
-      new THREE.MeshStandardMaterial({ color: 0x243026, roughness: 1 })
+      new THREE.MeshStandardMaterial({ map: groundTex, roughness: 1 })
     );
     ground.rotation.x = -Math.PI / 2;
     ground.receiveShadow = true;
@@ -41,7 +67,9 @@ export class Game {
     // Vehicles — always spawn on clear road lanes, never inside buildings
     this.vehicles = [];
     for (let i = 0; i < 18; i++) this.vehicles.push(this.createVehicle());
-    const starter = this.createVehicle(0, 50);
+    // Park the starter car ahead of the player (-Z is forward). Spawning it
+    // behind at +50 put the over-the-shoulder camera inside its cabin.
+    const starter = this.createVehicle(0, -80);
     starter.userData.stationary = true; // wait at the spawn point for the player
     this.vehicles.push(starter);
 
