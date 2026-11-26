@@ -220,6 +220,48 @@ export class City {
     dashMesh.frustumCulled = false;
     this.group.add(dashMesh);
 
+    // ---- Directional lane arrows, one instanced mesh for the whole grid ----
+    const arrowShape = new THREE.Shape();
+    arrowShape.moveTo(0, 9);
+    arrowShape.lineTo(-7, -2);
+    arrowShape.lineTo(-2.5, -2);
+    arrowShape.lineTo(-2.5, -9);
+    arrowShape.lineTo(2.5, -9);
+    arrowShape.lineTo(2.5, -2);
+    arrowShape.lineTo(7, -2);
+    arrowShape.closePath();
+    const arrowGeo = new THREE.ShapeGeometry(arrowShape);
+    arrowGeo.rotateX(-Math.PI / 2); // shape's +Y now points towards -Z
+    const arrows = [];
+    for (let i = -6; i <= 6; i++) {
+      for (let j = -6; j <= 6; j++) {
+        for (let t = -2; t <= 2; t++) {
+          const along = t * 160;
+          // N/S: -14 lane heads +Z, -42 heads -Z
+          arrows.push({ x: i * 200 - 14, z: j * 200 + along, yaw: Math.PI });
+          arrows.push({ x: i * 200 - 42, z: j * 200 + along, yaw: 0 });
+          // E/W: -42 lane heads +X, -14 heads -X
+          arrows.push({ x: i * 200 + along, z: j * 200 - 42, yaw: -Math.PI / 2 });
+          arrows.push({ x: i * 200 + along, z: j * 200 - 14, yaw: Math.PI / 2 });
+        }
+      }
+    }
+    const arrowMat = new THREE.MeshBasicMaterial({
+      color: 0xffe4a8, transparent: true, opacity: 0.38,
+      side: THREE.DoubleSide, depthWrite: false, toneMapped: false
+    });
+    const arrowMesh = new THREE.InstancedMesh(arrowGeo, arrowMat, arrows.length);
+    arrows.forEach((a, i) => {
+      dummy.position.set(a.x, 0.42, a.z);
+      dummy.rotation.set(0, a.yaw, 0);
+      dummy.scale.setScalar(1);
+      dummy.updateMatrix();
+      arrowMesh.setMatrixAt(i, dummy.matrix);
+    });
+    arrowMesh.instanceMatrix.needsUpdate = true;
+    arrowMesh.frustumCulled = false;
+    this.group.add(arrowMesh);
+
     // ---- Zebra crossings at every intersection ----
     const crossMat = new THREE.MeshStandardMaterial({
       color: 0xf3eee0, roughness: 1, transparent: true, opacity: 0.72
