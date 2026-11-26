@@ -46,6 +46,20 @@ html, body {
 }
 .star.off { opacity: .18; filter: none; transform: scale(.85); }
 
+#mission-hud {
+  margin-top: 18px;
+  padding: 9px 16px 9px 13px;
+  background: linear-gradient(90deg, rgba(12,18,32,.82), rgba(12,18,32,.28));
+  border-left: 3px solid #35f0ff;
+  min-width: 220px;
+}
+#mission-title {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 18px; font-weight: 700; letter-spacing: 3px; color: #35f0ff;
+}
+#mission-objective { margin-top: 2px; font-size: 14px; letter-spacing: 2px; font-weight: 600; }
+#mission-meta { margin-top: 2px; font-size: 11px; letter-spacing: 2px; color: #9fb6c9; }
+
 /* ---------- Top right / minimap ---------- */
 #minimap-wrap { position: absolute; top: 24px; right: 28px; display: flex; flex-direction: column; align-items: center; }
 #minimap {

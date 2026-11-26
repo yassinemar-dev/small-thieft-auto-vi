@@ -128,12 +128,51 @@ export class Game {
     this.keys = {};
     this.prevF = false;
     this.prevR = false;
+    this.prevM = false;
     this.hintTimer = 12;
+
+    // Mission: a five-checkpoint Vice Run through the city
+    this.mission = { active: false, index: 0, time: 0, completed: 0 };
+    this.checkpoints = [];
+    this.missionCooldown = 0;
+    this.createMissionMarker();
 
     window.addEventListener('keydown', (e) => { this.keys[e.key.toLowerCase()] = true; });
     window.addEventListener('keyup', (e) => { this.keys[e.key.toLowerCase()] = false; });
 
     this.initHUD();
+    this.startMission();
+  }
+
+  /** A single glowing beacon reused for every checkpoint. */
+  createMissionMarker() {
+    const marker = new THREE.Group();
+    const cyan = 0x35f0ff;
+    const ring = new THREE.Mesh(
+      new THREE.TorusGeometry(30, 2.2, 8, 40),
+      new THREE.MeshBasicMaterial({ color: cyan, transparent: true, opacity: 0.9, side: THREE.DoubleSide, toneMapped: false })
+    );
+    ring.rotation.x = -Math.PI / 2;
+    ring.position.y = 3;
+    const beam = new THREE.Mesh(
+      new THREE.CylinderGeometry(15, 30, 120, 24, 1, true),
+      new THREE.MeshBasicMaterial({
+        color: cyan, transparent: true, opacity: 0.16, depthWrite: false,
+        blending: THREE.AdditiveBlending, side: THREE.DoubleSide, toneMapped: false
+      })
+    );
+    beam.position.y = 60;
+    const arrow = new THREE.Mesh(
+      new THREE.ConeGeometry(13, 22, 16),
+      new THREE.MeshBasicMaterial({ color: cyan, toneMapped: false })
+    );
+    arrow.rotation.x = Math.PI;
+    arrow.position.y = 128;
+    marker.add(ring, beam, arrow);
+    marker.visible = false;
+    this.scene.add(marker);
+    this.missionMarker = marker;
+    this.markerParts = { ring, beam, arrow };
   }
 
   createVehicle(x, z, dir) {
@@ -194,6 +233,67 @@ export class Game {
         s.className = 'star off';
         stars.appendChild(s);
       }
+    }
+  }
+
+  /** Start a fresh checkpoint route near the city centre. */
+  startMission() {
+    const anchors = [[220, 220], [420, -180], [180, -420], [-220, -220], [-420, 180]];
+    this.checkpoints = anchors.map(([x, z]) => {
+      const spot = this.city.roadSpawn(x, z);
+      return { x: spot.x, z: spot.z };
+    });
+    this.mission.active = true;
+    this.mission.index = 0;
+    this.mission.time = 0;
+    this.missionCooldown = 0;
+    this.placeMissionMarker();
+    this.notify('VICE RUN  —  5 CHECKPOINTS', 'green');
+  }
+
+  placeMissionMarker() {
+    const cp = this.checkpoints[this.mission.index];
+    if (!cp) { this.missionMarker.visible = false; return; }
+    this.missionMarker.position.set(cp.x, 0, cp.z);
+    this.missionMarker.visible = true;
+  }
+
+  missionBonus() {
+    return Math.max(500, 2500 - Math.floor(this.mission.time) * 20);
+  }
+
+  updateMission(dt) {
+    const m = this.mission;
+    if (!m.active) {
+      if (this.missionCooldown > 0) {
+        this.missionCooldown -= dt;
+        if (this.missionCooldown <= 0) this.startMission();
+      }
+      return;
+    }
+    m.time += dt;
+    const cp = this.checkpoints[m.index];
+    if (cp && Math.hypot(this.player.position.x - cp.x, this.player.position.z - cp.z) < 55) {
+      this.cash += 400;
+      m.index++;
+      if (m.index >= this.checkpoints.length) {
+        m.active = false;
+        m.completed++;
+        const bonus = this.missionBonus();
+        this.cash += bonus;
+        this.missionCooldown = 4;
+        this.missionMarker.visible = false;
+        this.notify(`MISSION COMPLETE  +$${bonus}`, 'green');
+      } else {
+        this.placeMissionMarker();
+        this.notify(`CHECKPOINT ${m.index}/${this.checkpoints.length}  +$400`, 'green');
+      }
+    }
+    if (this.missionMarker.visible) {
+      const t = performance.now() / 1000;
+      this.missionMarker.rotation.y = t * 0.8;
+      this.markerParts.ring.scale.setScalar(1 + Math.sin(t * 4) * 0.06);
+      this.markerParts.arrow.position.y = 128 + Math.sin(t * 3) * 8;
     }
   }
 
@@ -299,6 +399,13 @@ export class Game {
       this.notify('REPAIRED', 'green');
     }
     this.prevR = r;
+
+    const m = !!this.keys['m'];
+    if (m && !this.prevM) {
+      this.missionCooldown = 0;
+      this.startMission();
+    }
+    this.prevM = m;
 
     // ---- Player + collision ----
     this.player.update(dt, this.yaw, this.keys);
@@ -556,6 +663,9 @@ export class Game {
       }
     }
 
+    // ---- Mission checkpoints ----
+    this.updateMission(dt);
+
     // ---- Camera ----
     this.updateCamera(dt);
 
@@ -707,6 +817,25 @@ export class Game {
     const d = document.getElementById('district');
     if (d && d.textContent !== district) d.textContent = district;
 
+    // Mission panel
+    const mt = document.getElementById('mission-title');
+    const mo = document.getElementById('mission-objective');
+    const mm = document.getElementById('mission-meta');
+    if (mt && mo && mm) {
+      const m = this.mission;
+      if (m.active) {
+        mt.textContent = 'VICE RUN';
+        mo.textContent = `CHECKPOINT ${m.index + 1} / ${this.checkpoints.length}`;
+        const secs = String(Math.floor(m.time % 60)).padStart(2, '0');
+        const mins = String(Math.floor(m.time / 60)).padStart(2, '0');
+        mm.textContent = `${mins}:${secs}   ·   BONUS $${this.missionBonus()}`;
+      } else {
+        mt.textContent = 'MISSION COMPLETE';
+        mo.textContent = 'PRESS M FOR ANOTHER RUN';
+        mm.textContent = `RUNS COMPLETED  ${m.completed}`;
+      }
+    }
+
     // Hint fades
     if (this.hintTimer > 0) {
       this.hintTimer -= dt;
@@ -779,6 +908,20 @@ export class Game {
       c.fillStyle = '#4fe0ff';
       c.beginPath(); c.arc(x, y, 3.5, 0, Math.PI * 2); c.fill();
     });
+
+    // Active checkpoint
+    if (this.mission.active && this.checkpoints[this.mission.index]) {
+      const cp = this.checkpoints[this.mission.index];
+      const [x, y] = map(cp.x, cp.z);
+      if (Math.abs(x) < mid && Math.abs(y) < mid) {
+        const pulse = 11 + Math.sin(performance.now() * 0.005) * 3;
+        c.strokeStyle = 'rgba(53,240,255,.8)';
+        c.lineWidth = 2;
+        c.beginPath(); c.arc(x, y, pulse, 0, Math.PI * 2); c.stroke();
+        c.save(); c.translate(x, y); c.rotate(Math.PI / 4);
+        c.fillStyle = '#35f0ff'; c.fillRect(-6, -6, 12, 12); c.restore();
+      }
+    }
 
     c.restore();
 
