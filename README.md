@@ -27,7 +27,8 @@ Then open http://localhost:5173/
 - Third-person camera with obstacle avoidance, shake and over-the-shoulder framing
 - Detailed articulated player character with walk/run and seated driving animation
 - Drivable vehicles with steering, acceleration, handbrake and collisions
-- AI traffic and pedestrians with collisions and wanted levels
-- City grid with textured roads/sidewalks, zebra crossings, art-deco floor bands, rooftop props, palm trees, shrubs and streetlights
+- Lane-following AI traffic (35 cars) with intersection turns, spacing and traffic lights
+- Pedestrians that dodge cars, plus collisions and wanted levels
+- Wider avenues, open parks with trees/benches, textured roads/sidewalks, zebra crossings, art-deco floor bands, rooftop props, palms, shrubs and streetlights
 - Vice City sunset sky with drifting clouds, distant hills, lens flare and speed-sensitive motion blur
 - GTA VI-style HUD: circular minimap, wanted stars, health/armor bars and speedometer

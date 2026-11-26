@@ -70,10 +70,11 @@ export class City {
   constructor() {
     this.buildings = [];
     this.roads = [];
+    this.parks = [];
     this.colliders = []; // AABBs for collision: {minX,maxX,minZ,maxZ}
 
     const blockSize = 200;
-    const roadWidth = 40;
+    const roadWidth = 56; // wider avenues, less cramped than the first layout
     const buildingCount = 10;
 
     for (let i = -buildingCount; i <= buildingCount; i++) {
@@ -93,11 +94,14 @@ export class City {
           height: roadWidth
         });
 
-        if (Math.random() > 0.22) {
+        const dist = Math.hypot(i, j);
+        // A few open lots break up the grid and give the city some breathing room
+        if (dist > 2.5 && Math.random() < 0.055) {
+          this.parks.push({ i, j });
+        } else if (Math.random() > 0.22) {
           const w = blockSize - roadWidth - 16;
           const d = blockSize - roadWidth - 16;
           // Downtown (near center) gets taller buildings
-          const dist = Math.hypot(i, j);
           const maxFloors = dist < 4 ? 16 : dist < 7 ? 9 : 5;
           const floors = 2 + Math.floor(Math.random() * maxFloors);
           // Buildings sit in the middle of each block; roads run along the
@@ -213,8 +217,8 @@ export class City {
     for (let i = -10; i <= 10; i++) {
       for (let j = -10; j <= 10; j++) {
         for (let k = -2; k <= 2; k++) {
-          crossings.push({ x: i * 200, z: j * 200 + k * 8, w: 30, d: 4 });
-          crossings.push({ x: i * 200 + k * 8, z: j * 200, w: 4, d: 30 });
+          crossings.push({ x: i * 200, z: j * 200 + k * 9, w: 42, d: 4.5 });
+          crossings.push({ x: i * 200 + k * 9, z: j * 200, w: 4.5, d: 42 });
         }
       }
     }
@@ -454,6 +458,73 @@ export class City {
       this.group.add(shrubMesh);
     }
 
+    // ---- Open park lots: shady trees and benches ----
+    const parkTrees = [], benches = [];
+    this.parks.forEach(p => {
+      const cx = p.i * 200 + 100, cz = p.j * 200 + 100;
+      const count = 4 + ((Math.random() * 4) | 0);
+      for (let k = 0; k < count; k++) {
+        const a = Math.random() * Math.PI * 2, r = 18 + Math.random() * 44;
+        parkTrees.push({
+          x: cx + Math.cos(a) * r, z: cz + Math.sin(a) * r,
+          h: 16 + Math.random() * 10, s: 7 + Math.random() * 4
+        });
+      }
+      for (let k = 0; k < 2; k++) {
+        benches.push({
+          x: cx + (Math.random() - 0.5) * 70,
+          z: cz + (Math.random() - 0.5) * 70,
+          rot: Math.random() * Math.PI
+        });
+      }
+    });
+    if (parkTrees.length) {
+      const trunkMat = new THREE.MeshStandardMaterial({ color: 0x5c432d, roughness: 1 });
+      const canopyMat = new THREE.MeshStandardMaterial({ roughness: 1, flatShading: true });
+      const trunkMesh = new THREE.InstancedMesh(
+        new THREE.CylinderGeometry(1, 1.5, 1, 7), trunkMat, parkTrees.length
+      );
+      const canopyMesh = new THREE.InstancedMesh(
+        new THREE.IcosahedronGeometry(1, 1), canopyMat, parkTrees.length
+      );
+      parkTrees.forEach((t, i) => {
+        dummy.position.set(t.x, t.h / 2 + 2.4, t.z);
+        dummy.rotation.set(0, 0, 0);
+        dummy.scale.set(1, t.h, 1);
+        dummy.updateMatrix();
+        trunkMesh.setMatrixAt(i, dummy.matrix);
+        dummy.position.set(t.x, t.h + 2.4 + t.s * 0.55, t.z);
+        dummy.rotation.set(Math.random(), Math.random() * Math.PI, Math.random() * 0.3);
+        dummy.scale.set(t.s, t.s * 0.8, t.s);
+        dummy.updateMatrix();
+        canopyMesh.setMatrixAt(i, dummy.matrix);
+        canopyMesh.setColorAt(i, new THREE.Color().setHSL(0.3 + Math.random() * 0.05, 0.42, 0.24 + Math.random() * 0.09));
+      });
+      trunkMesh.instanceMatrix.needsUpdate = true;
+      canopyMesh.instanceMatrix.needsUpdate = true;
+      if (canopyMesh.instanceColor) canopyMesh.instanceColor.needsUpdate = true;
+      trunkMesh.castShadow = true;
+      canopyMesh.castShadow = true;
+      trunkMesh.frustumCulled = false;
+      canopyMesh.frustumCulled = false;
+      this.group.add(trunkMesh, canopyMesh);
+    }
+    if (benches.length) {
+      const benchMat = new THREE.MeshStandardMaterial({ color: 0x8a5a3b, roughness: 0.9 });
+      const benchMesh = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), benchMat, benches.length);
+      benches.forEach((b, i) => {
+        dummy.position.set(b.x, 4.4, b.z);
+        dummy.rotation.set(0, b.rot, 0);
+        dummy.scale.set(13, 2.2, 4.5);
+        dummy.updateMatrix();
+        benchMesh.setMatrixAt(i, dummy.matrix);
+      });
+      benchMesh.instanceMatrix.needsUpdate = true;
+      benchMesh.castShadow = true;
+      benchMesh.frustumCulled = false;
+      this.group.add(benchMesh);
+    }
+
     // ---- Streetlights ----
     const bulbMat = new THREE.MeshStandardMaterial({
       color: 0xfff0c0, emissive: 0xffd070, emissiveIntensity: 1.6
@@ -522,8 +593,68 @@ export class City {
     hillMesh.frustumCulled = false;
     this.group.add(hillMesh);
 
+    // ---- Traffic lights at every intersection (red/green alternate, amber blinks) ----
+    const intersections = [];
+    for (let i = -10; i <= 10; i++) {
+      for (let j = -10; j <= 10; j++) {
+        intersections.push({ x: i * 200 - 10, z: j * 200 - 10, phase: (i + j) & 1 });
+      }
+    }
+    const signalPoleMat = new THREE.MeshStandardMaterial({ color: 0x303744, metalness: 0.6, roughness: 0.5 });
+    const signalBoxMat = new THREE.MeshStandardMaterial({ color: 0x151922, roughness: 0.8 });
+    const bulbMaterial = () => new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: false });
+    const signalPoleMesh = new THREE.InstancedMesh(
+      new THREE.CylinderGeometry(0.8, 1.1, 1, 6), signalPoleMat, intersections.length
+    );
+    const boxMesh = new THREE.InstancedMesh(
+      new THREE.BoxGeometry(1, 1, 1), signalBoxMat, intersections.length
+    );
+    const redMesh = new THREE.InstancedMesh(new THREE.SphereGeometry(1.8, 8, 8), bulbMaterial(), intersections.length);
+    const amberMesh = new THREE.InstancedMesh(new THREE.SphereGeometry(1.8, 8, 8), bulbMaterial(), intersections.length);
+    const greenMesh = new THREE.InstancedMesh(new THREE.SphereGeometry(1.8, 8, 8), bulbMaterial(), intersections.length);
+    intersections.forEach((s, i) => {
+      dummy.rotation.set(0, 0, 0);
+      dummy.position.set(s.x, 8.5, s.z);
+      dummy.scale.set(1, 17, 1);
+      dummy.updateMatrix(); signalPoleMesh.setMatrixAt(i, dummy.matrix);
+      dummy.position.set(s.x, 17, s.z);
+      dummy.scale.set(4, 11, 4);
+      dummy.updateMatrix(); boxMesh.setMatrixAt(i, dummy.matrix);
+      dummy.scale.set(1, 1, 1);
+      dummy.position.set(s.x, 20, s.z + 2.4);
+      dummy.updateMatrix(); redMesh.setMatrixAt(i, dummy.matrix);
+      dummy.position.set(s.x, 17, s.z + 2.4);
+      dummy.updateMatrix(); amberMesh.setMatrixAt(i, dummy.matrix);
+      dummy.position.set(s.x, 14, s.z + 2.4);
+      dummy.updateMatrix(); greenMesh.setMatrixAt(i, dummy.matrix);
+    });
+    [signalPoleMesh, boxMesh, redMesh, amberMesh, greenMesh].forEach(m => {
+      m.instanceMatrix.needsUpdate = true;
+      m.frustumCulled = false;
+    });
+    this.group.add(poleMesh, boxMesh, redMesh, amberMesh, greenMesh);
+    this.trafficLights = { red: redMesh, amber: amberMesh, green: greenMesh, entries: intersections };
+
     scene.add(this.group);
     return this.group;
+  }
+
+  /** Alternate red/green every four seconds and blink the amber bulbs. */
+  updateTrafficLights(time) {
+    if (!this.trafficLights) return;
+    const phase = Math.floor(time / 4) & 1;
+    const blink = (time % 4) > 3.25;
+    const c = new THREE.Color();
+    this.trafficLights.entries.forEach((e, i) => {
+      const go = (e.phase ^ phase) === 1;
+      this.trafficLights.red.setColorAt(i, c.setHex(0xff3355).multiplyScalar(go ? 0.12 : 1));
+      this.trafficLights.green.setColorAt(i, c.setHex(0x33ff88).multiplyScalar(go ? 1 : 0.12));
+      this.trafficLights.amber.setColorAt(i, c.setHex(0xffb020).multiplyScalar(blink ? 1 : 0.08));
+    });
+    ['red', 'green', 'amber'].forEach(k => {
+      const m = this.trafficLights[k];
+      if (m.instanceColor) m.instanceColor.needsUpdate = true;
+    });
   }
 
   // Circle vs AABB resolution used by the collision system

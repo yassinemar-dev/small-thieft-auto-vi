@@ -64,18 +64,31 @@ export class Game {
     this.city = new City();
     this.city.build3D(scene);
 
-    // Vehicles — always spawn on clear road lanes, never inside buildings
+    // Vehicles — start with a visible flow of traffic around the spawn point,
+    // then fill the rest of the city. All spawns are on clear road lanes.
     this.vehicles = [];
-    for (let i = 0; i < 18; i++) this.vehicles.push(this.createVehicle());
+    for (let i = 0; i < 34; i++) {
+      let x, z, dir;
+      if (i < 20) {
+        // Four lanes on each of the five closest N/S and E/W avenues.
+        const grid = (Math.floor(i / 4) - 2) * 200;
+        const along = ((i % 4) - 1.5) * 260 - 28;
+        const vertical = i % 2 === 0;
+        const lane = (i % 4 < 2) ? -8 : -48;
+        if (vertical) { x = grid + lane; z = along; dir = lane === -8 ? 0 : Math.PI; }
+        else { x = along; z = grid + lane; dir = lane === -8 ? Math.PI / 2 : -Math.PI / 2; }
+      }
+      this.vehicles.push(this.createVehicle(x, z, dir));
+    }
     // Park the starter car ahead of the player (-Z is forward). Spawning it
     // behind at +50 put the over-the-shoulder camera inside its cabin.
-    const starter = this.createVehicle(0, -80);
+    const starter = this.createVehicle(0, -80, 0);
     starter.userData.stationary = true; // wait at the spawn point for the player
     this.vehicles.push(starter);
 
     // Pedestrians
     this.pedestrians = [];
-    for (let i = 0; i < 32; i++) this.pedestrians.push(this.createPedestrian());
+    for (let i = 0; i < 44; i++) this.pedestrians.push(this.createPedestrian());
 
     // Player
     this.player = new Player(scene);
@@ -106,12 +119,12 @@ export class Game {
     this.initHUD();
   }
 
-  createVehicle(x, z) {
+  createVehicle(x, z, dir) {
     const color = CAR_COLORS[(Math.random() * CAR_COLORS.length) | 0];
     const car = createCar(color);
     const spot = this.city.roadSpawn(x, z);
     car.position.set(spot.x, 15, spot.z);
-    car.rotation.y = spot.dir + (Math.random() > 0.5 ? Math.PI : 0);
+    car.rotation.y = dir !== undefined ? dir : spot.dir + (Math.random() > 0.5 ? Math.PI : 0);
     car.userData.aiSpeed = 12 + Math.random() * 10;
     car.userData.aiTarget = car.rotation.y;
     this.scene.add(car);
@@ -192,24 +205,95 @@ export class Game {
       this.cash = Math.max(0, this.cash - 150);
     }
 
-    // ---- AI vehicles with collision ----
-    this.vehicles.forEach((v, idx) => {
+    // ---- AI traffic: lanes, intersection turns and spacing ----
+    const DIRS = [0, Math.PI / 2, Math.PI, -Math.PI / 2];
+    const LANES = [-8, -48]; // the avenue surface runs from gridLine-56 to gridLine
+    const nearestLane = value => LANES.reduce((a, b) =>
+      Math.abs(value - b) < Math.abs(value - a) ? b : a);
+    const time = performance.now() / 1000;
+    this.city.updateTrafficLights(time);
+
+    this.vehicles.forEach((v) => {
       if (v === this.player.currentVehicle || v.userData.stationary) return;
       const u = v.userData;
-      // Steer toward a target heading occasionally
-      if (Math.random() < 0.004) u.aiTarget = Math.round(Math.random() * 4) * Math.PI / 2;
-      u.aiSpeed += (Math.random() - 0.5) * 2 * dt;
-      u.aiSpeed = THREE.MathUtils.clamp(u.aiSpeed, 6, 28);
+      u.frameSpeed = u.aiSpeed || 0;
 
-      v.rotation.y += THREE.MathUtils.clamp(u.aiTarget - v.rotation.y, -dt, dt);
+      if (u.aiDir === undefined) {
+        u.aiDir = DIRS[Math.round(v.rotation.y / (Math.PI / 2)) & 3];
+        const alongZ = Math.abs(Math.sin(u.aiDir)) < 0.5;
+        const line = alongZ ? Math.round(v.position.x / 200) * 200 : Math.round(v.position.z / 200) * 200;
+        const offset = alongZ ? v.position.x - line : v.position.z - line;
+        u.aiLane = nearestLane(offset);
+        u.aiSpeed = 12 + Math.random() * 10;
+        u.cruise = 11 + Math.random() * 13;
+        u.lastCross = null;
+      }
 
-      const nx = v.position.x + Math.sin(v.rotation.y) * u.aiSpeed * dt;
-      const nz = v.position.z + Math.cos(v.rotation.y) * u.aiSpeed * dt;
+      const alongZ = Math.abs(Math.sin(u.aiDir)) < 0.5;
+      const line = alongZ ? Math.round(v.position.x / 200) * 200 : Math.round(v.position.z / 200) * 200;
+      const lane = u.aiLane !== undefined ? u.aiLane : -8;
+
+      // Ease back onto the lane centre after a turn or a collision
+      if (alongZ) v.position.x += (line + lane - v.position.x) * Math.min(1, dt * 3);
+      else v.position.z += (line + lane - v.position.z) * Math.min(1, dt * 3);
+
+      // Slow down for a car ahead in the same lane instead of piling up
+      let targetSpeed = u.cruise;
+      const fx = Math.sin(u.aiDir), fz = Math.cos(u.aiDir);
+      for (const other of this.vehicles) {
+        if (other === v || other.userData.stationary) continue;
+        const dx = other.position.x - v.position.x, dz = other.position.z - v.position.z;
+        const ahead = dx * fx + dz * fz;
+        const lateral = Math.abs(dx * fz - dz * fx);
+        if (ahead > 0 && ahead < 90 && lateral < 24) {
+          targetSpeed = Math.min(targetSpeed, (other.userData.aiSpeed || 12) * 0.72);
+        }
+      }
+
+      // Obey the red light as the car approaches an intersection
+      const travel = alongZ ? v.position.z : v.position.x;
+      const crossLine = Math.round((travel + 28) / 200) * 200;
+      const crossCenter = crossLine - 28;
+      const ix = Math.round((alongZ ? v.position.x : v.position.z) / 200);
+      const iz = Math.round((alongZ ? v.position.z : v.position.x) / 200);
+      const green = (((ix + iz) & 1) ^ (Math.floor(time / 4) & 1)) === 1;
+      if (Math.abs(travel - crossCenter) < 58 && !green) targetSpeed = 0;
+
+      u.aiSpeed += (targetSpeed - u.aiSpeed) * Math.min(1, dt * 2.2);
+      u.aiSpeed = THREE.MathUtils.clamp(u.aiSpeed, 0, 30);
+
+      const nx = v.position.x + fx * u.aiSpeed * dt;
+      const nz = v.position.z + fz * u.aiSpeed * dt;
       const res = this.city.resolveCircle(nx, nz, 26);
-      if (res.hit) u.aiTarget += Math.PI / 2 + (Math.random() - 0.5);
+      if (res.hit) {
+        u.aiLane = nearestLane(alongZ ? v.position.x - line : v.position.z - line);
+        u.aiSpeed *= 0.35;
+        u.lastCross = null;
+      }
       v.position.x = res.x;
       v.position.z = res.z;
       v.position.y = 15;
+      v.rotation.y = u.aiDir;
+
+      // Turn at the next intersection
+      if (Math.abs(travel - crossCenter) < 12 && u.lastCross !== crossCenter) {
+        u.lastCross = crossCenter;
+        let choices = DIRS.filter(dir => {
+          const diff = Math.abs(Math.atan2(Math.sin(dir - u.aiDir), Math.cos(dir - u.aiDir)));
+          return diff > 0.8 && diff < 2.5; // perpendicular turns only
+        });
+        if (Math.random() < 0.3) choices = choices.concat(u.aiDir); // sometimes go straight
+        u.aiDir = choices[(Math.random() * choices.length) | 0] || u.aiDir;
+        u.aiLane = nearestLane(-8 + (Math.random() > 0.5 ? 0 : -40));
+        const xLine = Math.round(v.position.x / 200) * 200;
+        const zLine = Math.round(v.position.z / 200) * 200;
+        if (Math.abs(Math.sin(u.aiDir)) < 0.5) {
+          v.position.set(xLine + u.aiLane, 15, crossCenter + Math.cos(u.aiDir) * 14);
+        } else {
+          v.position.set(crossCenter + Math.sin(u.aiDir) * 14, 15, zLine + u.aiLane);
+        }
+        v.rotation.y = u.aiDir;
+      }
 
       // Vehicle vs player vehicle
       if (this.player.currentVehicle && this.player.currentVehicle !== v) {
@@ -229,11 +313,40 @@ export class Game {
         }
       }
 
-      // Wrap AI vehicles far away
+      // Recycle far-away traffic onto a clean road lane
       if (Math.abs(v.position.x) > 2100 || Math.abs(v.position.z) > 2100) {
-        v.position.set((Math.random() - 0.5) * 1200, 15, (Math.random() - 0.5) * 1200);
+        const spot = this.city.roadSpawn();
+        v.position.set(spot.x, 15, spot.z);
+        u.aiDir = spot.dir;
+        u.aiLane = nearestLane(spot.x - Math.round(spot.x / 200) * 200);
+        u.lastCross = null;
       }
     });
+
+    // Traffic should never drive through an pedestrian on foot
+    if (!this.player.inVehicle) {
+      this.playerCarCooldown = Math.max(0, (this.playerCarCooldown || 0) - dt);
+      for (const car of this.vehicles) {
+        const dx = this.player.position.x - car.position.x;
+        const dz = this.player.position.z - car.position.z;
+        const d = Math.hypot(dx, dz);
+        if (d < 30 && d > 0.01) {
+          const push = (30 - d) / d;
+          this.player.position.x += dx * push;
+          this.player.position.z += dz * push;
+          const res = this.city.resolveCircle(this.player.position.x, this.player.position.z, this.player.radius);
+          this.player.position.x = res.x;
+          this.player.position.z = res.z;
+          const carSpeed = car.userData.stationary ? 0 : (car.userData.frameSpeed || car.userData.aiSpeed || 0);
+          if (carSpeed > 14 && this.playerCarCooldown <= 0) {
+            this.player.damage(carSpeed * 0.3);
+            this.shake = Math.min(2.2, 0.6 + carSpeed * 0.07);
+            this.flashHit();
+            this.playerCarCooldown = 1.2;
+          }
+        }
+      }
+    }
 
     // ---- Pedestrians ----
     this.pedestrians.forEach(p => {
@@ -247,6 +360,17 @@ export class Game {
           p.mesh.position.set((Math.random() - 0.5) * 1200, 0, (Math.random() - 0.5) * 1200);
         }
         return;
+      }
+
+      // Bots actually react to traffic now — step aside when a car is close
+      for (const car of this.vehicles) {
+        const dx = p.mesh.position.x - car.position.x;
+        const dz = p.mesh.position.z - car.position.z;
+        const d = Math.hypot(dx, dz);
+        if (d < 60 && d > 0.01) {
+          p.vx += (dx / d) * (60 - d) * 0.4 * dt;
+          p.vz += (dz / d) * (60 - d) * 0.4 * dt;
+        }
       }
 
       p.vx += (Math.random() - 0.5) * 6 * dt;
