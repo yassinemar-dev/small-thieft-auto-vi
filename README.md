@@ -21,6 +21,7 @@ Open <http://localhost:5173/>. Use `npm run build` for a production bundle.
 | `Shift` | Run |
 | `Space` | Handbrake while driving |
 | `M` | Skip to the next job (Vice Run / Courier / Takedown) |
+| `N` | Cycle car radio: off / Vice FM / Wave 103 / Los Santos |
 | `Esc` / `P` | Pause menu (resume or restart) |
 | Mouse | Look around (click the canvas to lock the pointer) |
 
@@ -34,5 +35,5 @@ Open <http://localhost:5173/>. Use `npm run build` for a production bundle.
 - **Performance-conscious rendering** — instanced cars and pedestrians, instanced props/decals, MSAA, half-float post-processing, subtle film grade and speed-sensitive motion blur.
 - **Atmosphere** — a six-minute day-night cycle from golden hour through dusk to blue hour, driving sky colours, fog, sun angle, exposure, bloom and window/neon brightness; plus drifting clouds, lens flare, palms, parks, awnings, rooftop props and zebra crossings.
 - **HUD** — rotating minimap with an honest compass, wanted stars, cash, in-game clock, district label, health/armor bars, speedometer, mission panel, notifications and damage flashes.
-- **Audio** — synthesized engine note, police siren, crashes, impacts, checkpoints, mission completion and wanted alerts; no external sound files.
+- **Audio** — synthesized engine note, police siren, crashes, impacts, checkpoints, mission completion and wanted alerts, plus three generative in-car radio stations with a lookahead scheduler; no external sound files.
 - **Pause menu** — freezes the simulation and offers resume or a clean full restart.

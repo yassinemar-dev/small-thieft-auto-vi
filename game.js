@@ -149,6 +149,7 @@ export class Game {
     this.prevF = false;
     this.prevR = false;
     this.prevM = false;
+    this.prevN = false;
     this.paused = false;
     this.started = false;
     this.hintTimer = 0;
@@ -281,7 +282,7 @@ export class Game {
     if (this.paused === paused) return;
     this.paused = paused;
     this.keys = {};
-    this.prevF = this.prevR = this.prevM = true;
+    this.prevF = this.prevR = this.prevM = this.prevN = true;
     const screen = document.getElementById('pause-screen');
     if (screen) screen.classList.toggle('show', paused);
     if (paused) this.audio?.silence();
@@ -620,6 +621,13 @@ export class Game {
       this.startMission(next);
     }
     this.prevM = m;
+
+    const n = !!this.keys['n'];
+    if (n && !this.prevN && this.player.inVehicle) {
+      const name = this.audio?.cycleRadio() || 'OFF';
+      this.notify(`RADIO  ${name}`, 'gold');
+    }
+    this.prevN = n;
 
     // ---- Player + collision ----
     this.player.update(dt, this.yaw, this.keys);
@@ -1056,6 +1064,11 @@ export class Game {
     }
     const gear = document.getElementById('gear');
     if (gear) gear.textContent = this.player.speed < -0.5 ? 'R' : this.player.speed > 0.5 ? 'D' : 'N';
+    const radioEl = document.getElementById('radio');
+    if (radioEl) {
+      radioEl.textContent = this.audio?.radioName() || 'RADIO OFF';
+      radioEl.classList.toggle('active', this.player.inVehicle);
+    }
 
     this.updateStars();
 

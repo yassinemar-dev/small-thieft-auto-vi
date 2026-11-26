@@ -168,6 +168,13 @@ html, body {
   transition: opacity .3s ease, transform .3s ease;
 }
 #speedo.active { opacity: 1; transform: translateY(0); }
+#radio {
+  position: absolute; bottom: 180px; right: 30px;
+  font-size: 12px; letter-spacing: 3px; color: #35f0ff;
+  text-shadow: 0 0 12px rgba(53,240,255,.5);
+  opacity: 0; transition: opacity .3s ease; pointer-events: none;
+}
+#radio.active { opacity: .9; }
 #speedo svg { width: 100%; height: 100%; transform: rotate(135deg); }
 .spd-bg { fill: none; stroke: rgba(255,255,255,.12); stroke-width: 7; stroke-dasharray: 405 541; stroke-linecap: round; }
 .spd-arc {
