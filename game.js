@@ -150,7 +150,8 @@ export class Game {
     this.prevR = false;
     this.prevM = false;
     this.paused = false;
-    this.hintTimer = 12;
+    this.started = false;
+    this.hintTimer = 0;
 
     // Mission: a five-checkpoint Vice Run through the city
     this.mission = { active: false, index: 0, time: 0, completed: 0 };

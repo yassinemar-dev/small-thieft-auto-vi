@@ -250,6 +250,24 @@ document.addEventListener('pointerlockchange', () => {
   if (hint) hint.style.opacity = pointerLocked ? '0' : '';
 });
 
+// ---- Title screen handoff ----
+const startScreen = document.getElementById('start-screen');
+function beginPlay() {
+  if (game.started) return;
+  game.started = true;
+  game.hintTimer = 12;
+  audio.init();
+  if (startScreen) startScreen.classList.add('hidden');
+  try {
+    const lock = canvas.requestPointerLock();
+    if (lock && lock.catch) lock.catch(() => {});
+  } catch (_) { /* keyboard start may not grant pointer lock */ }
+}
+document.getElementById('start-button')?.addEventListener('click', beginPlay);
+window.addEventListener('keydown', (e) => {
+  if (!game.started && (e.key === 'Enter' || e.key === ' ')) beginPlay();
+});
+
 const lookSensitivity = 0.0022;
 let yaw = 0, pitch = 0.34;
 
@@ -267,7 +285,7 @@ function gameLoop(timestamp) {
   const dt = Math.min(lastTime ? (timestamp - lastTime) / 1000 : 0, 0.05);
   lastTime = timestamp;
 
-  if (!game.paused) {
+  if (game.started && !game.paused) {
     game.update(dt);
     game.draw();
 
