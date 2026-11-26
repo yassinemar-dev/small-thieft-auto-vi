@@ -436,20 +436,40 @@ export class City {
       this.group.add(awningMesh);
     }
     if (signList.length) {
-      const signMat = new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: false });
-      const signMesh = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), signMat, signList.length);
-      signList.forEach((s, i) => {
-        dummy.position.set(s.x, s.y, s.z);
-        dummy.rotation.set(0, 0, 0);
-        dummy.scale.set(s.w, 4.5, 1);
-        dummy.updateMatrix();
-        signMesh.setMatrixAt(i, dummy.matrix);
-        signMesh.setColorAt(i, new THREE.Color(s.color));
+      // Readable neon shop signs, one instanced mesh per word (6 draw calls)
+      const words = ['MOTEL', 'VICE', '24H', 'BEACH', 'DINER', 'ARCADE'];
+      const textures = words.map(word => {
+        const cv = document.createElement('canvas');
+        cv.width = 256; cv.height = 64;
+        const c = cv.getContext('2d');
+        c.fillStyle = '#13131c'; c.fillRect(0, 0, 256, 64);
+        c.strokeStyle = '#ff86b8'; c.lineWidth = 4; c.strokeRect(3, 3, 250, 58);
+        c.font = 'bold 34px Arial'; c.textAlign = 'center'; c.textBaseline = 'middle';
+        c.shadowColor = '#ff5ca8'; c.shadowBlur = 14;
+        c.fillStyle = '#fff4e8'; c.fillText(word, 128, 33);
+        const tex = new THREE.CanvasTexture(cv);
+        tex.colorSpace = THREE.SRGBColorSpace;
+        return tex;
       });
-      signMesh.instanceMatrix.needsUpdate = true;
-      if (signMesh.instanceColor) signMesh.instanceColor.needsUpdate = true;
-      signMesh.frustumCulled = false;
-      this.group.add(signMesh);
+      const groups = words.map(() => []);
+      signList.forEach(s => groups[(Math.random() * words.length) | 0].push(s));
+      groups.forEach((list, k) => {
+        if (!list.length) return;
+        const mat = new THREE.MeshBasicMaterial({
+          map: textures[k], transparent: true, side: THREE.DoubleSide, toneMapped: false
+        });
+        const mesh = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1), mat, list.length);
+        list.forEach((s, i) => {
+          dummy.position.set(s.x, s.y, s.z);
+          dummy.rotation.set(0, 0, 0);
+          dummy.scale.set(s.w, 4.5, 1);
+          dummy.updateMatrix();
+          mesh.setMatrixAt(i, dummy.matrix);
+        });
+        mesh.instanceMatrix.needsUpdate = true;
+        mesh.frustumCulled = false;
+        this.group.add(mesh);
+      });
     }
     const bins = [];
     for (let i = -8; i <= 8; i++) {
