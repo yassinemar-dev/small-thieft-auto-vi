@@ -391,6 +391,8 @@ export class PedestrianCrowd {
     this.proxies = proxies;
     this.local = new THREE.Object3D();
     this.matrix = new THREE.Matrix4();
+    this.tint = new THREE.Color();
+    this.panicColor = new THREE.Color(0xffe066);
     this.parts = [];
 
     const parts = [
@@ -414,7 +416,7 @@ export class PedestrianCrowd {
       proxies.forEach((p, i) => mesh.setColorAt(i, new THREE.Color(color(p))));
       if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
       scene.add(mesh);
-      this.parts.push({ key, mesh, pos, swing, visible });
+      this.parts.push({ key, mesh, pos, color, swing, visible });
     });
     this.sync();
   }
@@ -430,6 +432,7 @@ export class PedestrianCrowd {
   sync() {
     this.proxies.forEach((proxy, i) => {
       proxy.updateMatrix();
+      const panicking = (proxy.userData.panic || 0) > 0;
       this.parts.forEach(part => {
         const on = part.visible ? part.visible(proxy) : true;
         this.local.position.set(part.pos[0], part.pos[1], part.pos[2]);
@@ -438,8 +441,17 @@ export class PedestrianCrowd {
         this.local.updateMatrix();
         this.matrix.multiplyMatrices(proxy.matrix, this.local.matrix);
         part.mesh.setMatrixAt(i, this.matrix);
+        if (part.key === 'torso' || part.key === 'armL' || part.key === 'armR') {
+          this.tint.set(part.color(proxy)).lerp(this.panicColor, panicking ? 0.55 : 0);
+          part.mesh.setColorAt(i, this.tint);
+        }
       });
     });
-    this.parts.forEach(part => { part.mesh.instanceMatrix.needsUpdate = true; });
+    this.parts.forEach(part => {
+      part.mesh.instanceMatrix.needsUpdate = true;
+      if (part.key === 'torso' || part.key === 'armL' || part.key === 'armR') {
+        if (part.mesh.instanceColor) part.mesh.instanceColor.needsUpdate = true;
+      }
+    });
   }
 }

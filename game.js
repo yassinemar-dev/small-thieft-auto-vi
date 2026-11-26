@@ -194,7 +194,7 @@ export class Game {
 
   createPedestrian() {
     const mesh = createPedestrianProxy();
-    return { mesh, vx: 0, vz: 0, alive: true, knocked: 0 };
+    return { mesh, vx: 0, vz: 0, alive: true, knocked: 0, panic: 0, panicDir: 0 };
   }
 
   /** Put a walker on a sidewalk lane, facing a steady direction. */
@@ -216,6 +216,8 @@ export class Game {
     p.vz = Math.cos(dir) * p.routeSpeed;
     p.alive = true;
     p.knocked = 0;
+    p.panic = 0;
+    p.mesh.userData.panic = 0;
   }
 
   setLook(yaw, pitch) { this.yaw = yaw; this.pitch = pitch; }
@@ -628,6 +630,15 @@ export class Game {
     }
 
     // ---- Pedestrians ----
+    // Fast cars and police sirens make nearby walkers scatter.
+    const threats = [];
+    if (this.player.inVehicle && Math.abs(this.player.speed) > 18) {
+      threats.push({ x: this.player.position.x, z: this.player.position.z, radius: 135 });
+    }
+    this.policeCars.forEach(car => {
+      threats.push({ x: car.position.x, z: car.position.z, radius: 175 });
+    });
+
     this.pedestrians.forEach(p => {
       if (!p.alive) {
         p.knocked -= dt;
@@ -650,9 +661,30 @@ export class Game {
       if (alongZ) p.mesh.position.x += (lane - p.mesh.position.x) * Math.min(1, dt * 3);
       else p.mesh.position.z += (lane - p.mesh.position.z) * Math.min(1, dt * 3);
 
+      // React to danger: run away from the closest fast car or cruiser
+      let threat = null, nearest = Infinity;
+      for (const t of threats) {
+        const dx = p.mesh.position.x - t.x, dz = p.mesh.position.z - t.z;
+        const d = Math.hypot(dx, dz);
+        if (d < t.radius && d < nearest) { nearest = d; threat = { x: dx, z: dz }; }
+      }
+      if (threat) {
+        p.panic = 2.2;
+        p.panicDir = Math.atan2(threat.x, threat.z);
+      } else {
+        p.panic = Math.max(0, p.panic - dt);
+      }
+      p.mesh.userData.panic = p.panic;
+
       // Desired pace along the sidewalk, with a gentle dodge for nearby cars
-      let ax = Math.sin(dir) * p.routeSpeed;
-      let az = Math.cos(dir) * p.routeSpeed;
+      let ax, az;
+      if (p.panic > 0) {
+        ax = Math.sin(p.panicDir) * p.routeSpeed * 2.4;
+        az = Math.cos(p.panicDir) * p.routeSpeed * 2.4;
+      } else {
+        ax = Math.sin(dir) * p.routeSpeed;
+        az = Math.cos(dir) * p.routeSpeed;
+      }
       for (const car of this.vehicles) {
         const dx = p.mesh.position.x - car.position.x;
         const dz = p.mesh.position.z - car.position.z;
@@ -667,7 +699,7 @@ export class Game {
       p.vx += (ax - p.vx) * Math.min(1, dt * 5);
       p.vz += (az - p.vz) * Math.min(1, dt * 5);
       const sp = Math.hypot(p.vx, p.vz);
-      const maxSp = p.routeSpeed * 1.8;
+      const maxSp = p.routeSpeed * (p.panic > 0 ? 2.6 : 1.8);
       if (sp > maxSp) { p.vx *= maxSp / sp; p.vz *= maxSp / sp; }
 
       const res = this.city.resolveCircle(p.mesh.position.x + p.vx * dt, p.mesh.position.z + p.vz * dt, 5);
