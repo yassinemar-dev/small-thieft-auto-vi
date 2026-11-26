@@ -4,6 +4,7 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { AfterimagePass } from 'three/addons/postprocessing/AfterimagePass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { Lensflare, LensflareElement } from 'three/addons/objects/Lensflare.js';
 
 const canvas = document.getElementById('game-canvas');
@@ -154,6 +155,36 @@ scene.add(fill);
 const camera = new THREE.PerspectiveCamera(62, window.innerWidth / window.innerHeight, 2, 5000);
 camera.position.set(0, 60, 100);
 
+// ---- Subtle film grade before tone mapping ----
+const GradeShader = {
+  uniforms: {
+    tDiffuse: { value: null },
+    time: { value: 0 },
+    vignette: { value: 0.22 },
+    grain: { value: 0.012 }
+  },
+  vertexShader: `
+    varying vec2 vUv;
+    void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }
+  `,
+  fragmentShader: `
+    uniform sampler2D tDiffuse;
+    uniform float time;
+    uniform float vignette;
+    uniform float grain;
+    varying vec2 vUv;
+    float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+    void main() {
+      vec4 c = texture2D(tDiffuse, vUv);
+      c.rgb = pow(max(c.rgb, 0.0), vec3(0.97)) * vec3(1.03, 0.995, 1.015);
+      float d = distance(vUv, vec2(0.5));
+      c.rgb *= 1.0 - vignette * smoothstep(0.32, 0.82, d);
+      c.rgb += (hash(vUv * 1024.0 + time) - 0.5) * grain;
+      gl_FragColor = c;
+    }
+  `
+};
+
 // ---- Renderer + post-processing ----
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
 renderer.setSize(window.innerWidth, window.innerHeight);
@@ -164,10 +195,16 @@ renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.05;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 
-const composer = new EffectComposer(renderer);
+const composerTarget = new THREE.WebGLRenderTarget(window.innerWidth, window.innerHeight, {
+  type: THREE.HalfFloatType,
+  samples: 4
+});
+const composer = new EffectComposer(renderer, composerTarget);
 composer.addPass(new RenderPass(scene, camera));
 const afterimage = new AfterimagePass(0.12);
 composer.addPass(afterimage);
+const grade = new ShaderPass(GradeShader);
+composer.addPass(grade);
 composer.addPass(new OutputPass());
 
 window.__renderer = renderer;
@@ -183,6 +220,7 @@ window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
+  composer.setPixelRatio(renderer.getPixelRatio());
   composer.setSize(window.innerWidth, window.innerHeight);
 });
 
@@ -228,6 +266,7 @@ function gameLoop(timestamp) {
   const targetFov = 62 + (game.player.inVehicle ? speedRatio * 11 : 0);
   camera.fov += (targetFov - camera.fov) * Math.min(1, dt * 4);
   camera.updateProjectionMatrix();
+  grade.uniforms.time.value += dt;
 
   composer.render();
   requestAnimationFrame(gameLoop);
