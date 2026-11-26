@@ -70,9 +70,9 @@ export class City {
   /** Right-hand traffic lane offset from a grid line for a given heading. */
   static laneOffset(dir) {
     const d = ((dir % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
-    if (d < Math.PI / 4 || d >= Math.PI * 7 / 4) return -12; // +Z
-    if (d < Math.PI * 5 / 4) return 12;                       // +X / -Z
-    return -12;                                               // -X
+    if (d < Math.PI / 4 || d >= Math.PI * 7 / 4) return -14; // +Z
+    if (d < Math.PI * 5 / 4) return 14;                      // +X / -Z
+    return -14;                                              // -X
   }
 
   /** Walkers keep to the outside pavement strip, clear of cars and buildings. */
@@ -674,6 +674,43 @@ export class City {
     bulbMesh.frustumCulled = false;
     this.group.add(poleMesh, bulbMesh);
 
+    // Warm halo + soft light pool — two draw calls for the whole city
+    const glowTex = canvasTexture(64, (c, s) => {
+      const g = c.createRadialGradient(s / 2, s / 2, 0, s / 2, s / 2, s / 2);
+      g.addColorStop(0, 'rgba(255,246,214,0.95)');
+      g.addColorStop(0.35, 'rgba(255,208,140,0.35)');
+      g.addColorStop(1, 'rgba(255,180,120,0)');
+      c.fillStyle = g; c.fillRect(0, 0, s, s);
+    });
+    const glowPos = new Float32Array(lights.length * 3);
+    lights.forEach((l, i) => {
+      glowPos[i * 3] = l.x; glowPos[i * 3 + 1] = 18.5; glowPos[i * 3 + 2] = l.z;
+    });
+    const glowGeo = new THREE.BufferGeometry();
+    glowGeo.setAttribute('position', new THREE.BufferAttribute(glowPos, 3));
+    const glow = new THREE.Points(glowGeo, new THREE.PointsMaterial({
+      map: glowTex, color: 0xffd9a0, size: 24, sizeAttenuation: true,
+      transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false
+    }));
+    glow.frustumCulled = false;
+    this.group.add(glow);
+
+    const poolMat = new THREE.MeshBasicMaterial({
+      color: 0xffb96b, transparent: true, opacity: 0.13,
+      depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, toneMapped: false
+    });
+    const poolMesh = new THREE.InstancedMesh(new THREE.CircleGeometry(1, 20), poolMat, lights.length);
+    lights.forEach((l, i) => {
+      dummy.position.set(l.x, 0.5, l.z);
+      dummy.rotation.set(-Math.PI / 2, 0, 0);
+      dummy.scale.set(15, 15, 1);
+      dummy.updateMatrix();
+      poolMesh.setMatrixAt(i, dummy.matrix);
+    });
+    poolMesh.instanceMatrix.needsUpdate = true;
+    poolMesh.frustumCulled = false;
+    this.group.add(poolMesh);
+
     // ---- Distant State-of-San-Andreas-style hills on the horizon ----
     const hills = [];
     for (let i = 0; i < 28; i++) {
@@ -841,7 +878,7 @@ export class City {
   /** Find a clear road-lane spawn point near a preferred location.
    *  Returns { x, z, dir } where dir is the road's heading (0 = N/S). */
   roadSpawn(preferredX, preferredZ) {
-    const tryPoint = (x, z, dir) => !this.isBlocked(x, z, 26) ? { x, z, dir } : null;
+    const tryPoint = (x, z, dir) => !this.isBlocked(x, z, 14) ? { x, z, dir } : null;
     if (preferredX !== undefined && preferredZ !== undefined) {
       const p = tryPoint(preferredX, preferredZ, 0);
       if (p) return p;

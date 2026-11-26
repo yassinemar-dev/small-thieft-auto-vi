@@ -287,7 +287,7 @@ export class Game {
 
       const nx = v.position.x + fx * u.aiSpeed * dt;
       const nz = v.position.z + fz * u.aiSpeed * dt;
-      const res = this.city.resolveCircle(nx, nz, 26);
+      const res = this.city.resolveCircle(nx, nz, 14);
       if (res.hit) {
         u.aiLane = City.laneOffset(u.aiDir);
         u.aiSpeed *= 0.35;

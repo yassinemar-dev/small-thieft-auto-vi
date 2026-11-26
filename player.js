@@ -59,7 +59,7 @@ export class Player {
     if (!this.inVehicle) return;
     const v = this.currentVehicle;
     // Step out beside the car, not into its rear bumper
-    const side = new THREE.Vector3(Math.cos(v.rotation.y), 0, -Math.sin(v.rotation.y)).multiplyScalar(30);
+    const side = new THREE.Vector3(Math.cos(v.rotation.y), 0, -Math.sin(v.rotation.y)).multiplyScalar(20);
     this.position.set(v.position.x + side.x, 0, v.position.z + side.z);
     const res = this.game.city.resolveCircle(this.position.x, this.position.z, this.radius);
     this.position.x = res.x; this.position.z = res.z;
@@ -121,7 +121,7 @@ export class Player {
       const fx = Math.sin(v.rotation.y), fz = Math.cos(v.rotation.y);
       const nx = v.position.x + fx * this.speed * dt;
       const nz = v.position.z + fz * this.speed * dt;
-      const res = this.game.city.resolveCircle(nx, nz, 26);
+      const res = this.game.city.resolveCircle(nx, nz, 14);
 
       if (res.hit && Math.abs(this.speed) > 8) {
         this.collisionThisFrame = true;
