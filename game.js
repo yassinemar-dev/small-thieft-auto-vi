@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { City } from './city.js';
 import { Player } from './player.js';
 import { createCarProxy, CarFleet, createPedestrianProxy, PedestrianCrowd } from './models.js';
+import { WeaponSystem } from './weapons.js';
 
 const CAR_COLORS = [
   0xff2e63, 0x00d4ff, 0xffd23f, 0x9b5cff, 0x2eff9f,
@@ -11,7 +12,8 @@ const CAR_COLORS = [
 const SAVE_KEY = 'vice-city-career-v1';
 const DEFAULT_STATS = {
   distance: 0, playtime: 0, missions: 0, crashes: 0, hits: 0,
-  wrecks: 0, escapes: 0, maxWanted: 0, cashEarned: 0, unlocked: []
+  wrecks: 0, escapes: 0, maxWanted: 0, cashEarned: 0,
+  shotsFired: 0, shotsHit: 0, unlocked: []
 };
 const ACHIEVEMENTS = [
   { id: 'first', name: 'FIRST SCORE', desc: 'Finish a job', reward: 500, test: s => s.missions >= 1 },
@@ -19,7 +21,8 @@ const ACHIEVEMENTS = [
   { id: 'wrecker', name: 'WRECKER', desc: 'Wreck 3 targets', reward: 1200, test: s => s.wrecks >= 3 },
   { id: 'wanted', name: 'MOST WANTED', desc: 'Reach five stars', reward: 2000, test: s => s.maxWanted >= 5 },
   { id: 'ghost', name: 'GHOST', desc: 'Escape the cops 5 times', reward: 1500, test: s => s.escapes >= 5 },
-  { id: 'legend', name: 'LOCAL LEGEND', desc: 'Earn $25,000 total', reward: 2500, test: s => s.cashEarned >= 25000 }
+  { id: 'legend', name: 'LOCAL LEGEND', desc: 'Earn $25,000 total', reward: 2500, test: s => s.cashEarned >= 25000 },
+  { id: 'sharpshooter', name: 'SHARPSHOOTER', desc: 'Land 12 shots', reward: 900, test: s => s.shotsHit >= 12 }
 ];
 
 export class Game {
@@ -140,6 +143,8 @@ export class Game {
     // Player
     this.player = new Player(scene);
     this.player.setGame(this);
+    this.weapon = new WeaponSystem(scene);
+    this.mouseDown = false;
 
     // Camera state
     this.yaw = 0;
@@ -191,6 +196,15 @@ export class Game {
       if (!e.repeat && (key === 'p' || key === 'escape')) this.togglePause();
     });
     window.addEventListener('keyup', (e) => { this.keys[e.key.toLowerCase()] = false; });
+
+    const canvas = document.getElementById('game-canvas');
+    canvas?.addEventListener('pointerdown', (e) => {
+      if (e.button === 0 && this.started && !this.paused) this.mouseDown = true;
+    });
+    window.addEventListener('pointerup', () => { this.mouseDown = false; });
+    document.addEventListener('pointerlockchange', () => {
+      if (!document.pointerLockElement) this.mouseDown = false;
+    });
 
     this.initHUD();
     this.startMission();
@@ -400,7 +414,9 @@ export class Game {
         ['CRASHES', s.crashes],
         ['TARGETS WRECKED', s.wrecks],
         ['COP ESCAPES', s.escapes],
-        ['TOP WANTED', `${s.maxWanted} ★`]
+        ['TOP WANTED', `${s.maxWanted} ★`],
+        ['SHOTS FIRED', s.shotsFired],
+        ['SHOTS LANDED', `${s.shotsHit} / ${s.shotsFired}`]
       ];
       grid.innerHTML = rows.map(([k, v]) =>
         `<div class="career-stat"><span>${k}</span><b>${v}</b></div>`
@@ -439,6 +455,7 @@ export class Game {
     if (this.paused === paused) return;
     this.paused = paused;
     this.keys = {};
+    this.mouseDown = false;
     this.prevF = this.prevR = this.prevM = this.prevN = true;
     const screen = document.getElementById('pause-screen');
     if (screen) screen.classList.toggle('show', paused);
@@ -479,6 +496,7 @@ export class Game {
     p.shadow.position.set(p.position.x, 0.08, p.position.z);
 
     this.cash = 12450;
+    this.weapon.refill();
     this.wanted = 0;
     this.wantedTimer = 0;
     this.crashCooldown = 0;
@@ -771,7 +789,9 @@ export class Game {
       const car = this.player.currentVehicle;
       const damaged = this.player.health < 100 || this.player.armor < 100 ||
         (car && (car.userData.damage || 0) > 0);
-      if (damaged) {
+      if (!this.player.inVehicle && !damaged && this.weapon.needsReload()) {
+        this.weapon.startReload(this);
+      } else if (damaged) {
         this.player.repair();
         this.notify('REPAIRED', 'green');
         this.audio?.repair();
@@ -797,6 +817,11 @@ export class Game {
 
     // ---- Player + collision ----
     this.player.update(dt, this.yaw, this.keys);
+
+    // Left mouse (or J) fires the pistol; rounds keep flying after release
+    if (this.mouseDown || this.keys['j']) this.weapon.tryFire(this);
+    this.weapon.update(dt, this);
+
     if (this.player.collisionThisFrame && this.crashCooldown <= 0) {
       this.crashCooldown = 1.2;
       this.stats.crashes++;
@@ -1150,6 +1175,7 @@ export class Game {
     this.wanted = 0;
     this.wantedTimer = 0;
     this.cash = Math.max(0, this.cash - 500);
+    this.weapon.refill();
     this.crashCooldown = 2;
     this.saveCareer();
     this.keys = {};
@@ -1250,6 +1276,14 @@ export class Game {
       radioEl.textContent = this.audio?.radioName() || 'RADIO OFF';
       radioEl.classList.toggle('active', this.player.inVehicle);
     }
+    const ammoNum = document.getElementById('ammo-num');
+    const ammoMax = document.getElementById('ammo-max');
+    const ammoEl = document.getElementById('ammo');
+    if (ammoNum) ammoNum.textContent = this.weapon.reloadTimer > 0 ? '•••' : this.weapon.ammo;
+    if (ammoMax) ammoMax.textContent = this.weapon.reloadTimer > 0 ? 'RELOADING' : `/ ${this.weapon.magSize}`;
+    if (ammoEl) ammoEl.classList.toggle('reloading', this.weapon.reloadTimer > 0);
+    const crosshair = document.getElementById('crosshair');
+    if (crosshair) crosshair.classList.toggle('active', this.started && !this.paused && !this.player.dead);
 
     this.updateStars();
 

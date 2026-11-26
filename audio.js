@@ -181,6 +181,12 @@ export class GameAudio {
     this.tone(60, 0.6, 'sawtooth', 0.26);
     this.tone(110, 0.35, 'triangle', 0.16, 0.05);
   }
+  shoot() { this.burst(0.13, 3800); this.tone(190, 0.06, 'square', 0.07); }
+  reload() {
+    this.tone(430, 0.05, 'square', 0.05, 0);
+    this.tone(620, 0.05, 'square', 0.05, 0.18);
+  }
+  impact() { this.burst(0.05, 2100); }
   crash() { this.burst(0.3, 750); this.tone(90, 0.22, 'triangle', 0.16); }
   hit() { this.burst(0.22, 1400); this.tone(180, 0.14, 'square', 0.08); }
   repair() { this.tone(520, 0.1, 'sine', 0.12); this.tone(780, 0.16, 'sine', 0.12, 0.09); }
