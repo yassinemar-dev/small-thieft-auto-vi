@@ -400,6 +400,7 @@ export class Game {
     const target = Math.min(32, 20 + this.wanted * 2);
     u.aiSpeed += (target - u.aiSpeed) * Math.min(1, dt * 2);
     u.frameSpeed = u.aiSpeed;
+    u.brake = false;
     (u.wheels || []).forEach(w => { w.rotation.z += u.aiSpeed * dt * 0.11; });
 
     const nx = v.position.x + Math.sin(u.aiDir) * u.aiSpeed * dt;
@@ -418,6 +419,8 @@ export class Game {
         pv.position.x += (pv.position.x - v.position.x) * push;
         pv.position.z += (pv.position.z - v.position.z) * push;
         this.player.damage(8);
+        u.damage = Math.min(1, (u.damage || 0) + 0.08);
+        pv.userData.damage = Math.min(1, (pv.userData.damage || 0) + 0.12);
         this.shake = Math.min(3, 1.2 + Math.abs(this.player.speed) * 0.04);
         this.flashHit();
         this.player.speed *= 0.7;
@@ -534,6 +537,7 @@ export class Game {
       u.aiSpeed += (targetSpeed - u.aiSpeed) * Math.min(1, dt * 2.2);
       u.aiSpeed = THREE.MathUtils.clamp(u.aiSpeed, 0, 30);
       u.frameSpeed = u.aiSpeed;
+      u.brake = targetSpeed < u.cruise * 0.7;
       (v.userData.wheels || []).forEach(w => { w.rotation.z += u.aiSpeed * dt * 0.11; });
 
       const nx = v.position.x + fx * u.aiSpeed * dt;

@@ -89,6 +89,8 @@ export class Player {
     this.dead = false;
     if (this.currentVehicle) {
       this.currentVehicle.userData.paint?.color.setHex(0x44ff88);
+      this.currentVehicle.userData.damage = 0;
+      this.currentVehicle.userData.brake = false;
     }
   }
 
@@ -102,6 +104,7 @@ export class Player {
       const throttle = (keys['w'] || keys['arrowup'] ? 1 : 0) - (keys['s'] || keys['arrowdown'] ? 1 : 0);
       const steer = (keys['a'] || keys['arrowleft'] ? 1 : 0) - (keys['d'] || keys['arrowright'] ? 1 : 0);
       const handbrake = !!keys[' '];
+      v.userData.brake = handbrake || (throttle !== 0 && throttle * this.speed < -1);
 
       // Engine + drag
       if (throttle !== 0) this.speed += throttle * this.acceleration * dt;
@@ -133,6 +136,7 @@ export class Player {
         this.collisionSpeed = Math.abs(this.speed);
         this.speed *= 0.22;
         this.damage(this.collisionSpeed * 0.45);
+        v.userData.damage = Math.min(1, (v.userData.damage || 0) + this.collisionSpeed / 180);
         if (v.userData.paint) v.userData.paint.color.offsetHSL(0, 0, -0.02);
       }
       v.position.x = res.x;

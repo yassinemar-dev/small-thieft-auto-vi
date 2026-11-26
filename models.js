@@ -19,6 +19,8 @@ const tailMat = new THREE.MeshStandardMaterial({ color: 0xff2038, emissive: 0xff
 export function createCarProxy(color) {
   const car = new THREE.Group();
   car.userData.paint = { color: new THREE.Color(color) };
+  car.userData.damage = 0;
+  car.userData.brake = false;
   car.userData.shell = { rotation: { z: 0 } };
   // Eight simple objects so player.js can spin wheels without knowing about instancing.
   car.userData.wheels = Array.from({ length: 8 }, () => ({ rotation: { z: 0 } }));
@@ -35,6 +37,9 @@ export class CarFleet {
     this.sirenRed = new THREE.Color(0xff2038);
     this.sirenBlue = new THREE.Color(0x2b8fff);
     this.sirenOff = new THREE.Color(0x000000);
+    this.tailOn = new THREE.Color(0xff3048);
+    this.tailOff = new THREE.Color(0x65131c);
+    this.tint = new THREE.Color();
     this.parts = [];
 
     const paintMat = new THREE.MeshStandardMaterial({ color: 0xffffff, metalness: 0.55, roughness: 0.32 });
@@ -77,21 +82,47 @@ export class CarFleet {
       scene.add(mesh);
       this.parts.push({ key, mesh, pos, kind, paint, extraRotZ });
     });
+
+    // One point per car: damaged cars emit a soft exhaust puff, others sit below ground.
+    const puffCv = document.createElement('canvas');
+    puffCv.width = puffCv.height = 64;
+    const pc = puffCv.getContext('2d');
+    const grad = pc.createRadialGradient(32, 32, 2, 32, 32, 32);
+    grad.addColorStop(0, 'rgba(215,218,225,0.85)');
+    grad.addColorStop(0.45, 'rgba(150,155,165,0.35)');
+    grad.addColorStop(1, 'rgba(120,125,135,0)');
+    pc.fillStyle = grad; pc.fillRect(0, 0, 64, 64);
+    const puffTex = new THREE.CanvasTexture(puffCv);
+    this.smokePos = new Float32Array(cars.length * 3);
+    for (let i = 0; i < cars.length; i++) this.smokePos[i * 3 + 1] = -1000;
+    this.smokeGeo = new THREE.BufferGeometry();
+    this.smokeGeo.setAttribute('position', new THREE.BufferAttribute(this.smokePos, 3));
+    this.smoke = new THREE.Points(this.smokeGeo, new THREE.PointsMaterial({
+      map: puffTex, color: 0xc8ced8, size: 24, sizeAttenuation: true,
+      transparent: true, opacity: 0.42, depthWrite: false
+    }));
+    this.smoke.frustumCulled = false;
+    scene.add(this.smoke);
+
     this.sync();
   }
 
   /** Push proxy transforms, paint, body roll and wheel spin to the GPU. */
   sync() {
     const redOn = Math.floor(performance.now() / 140) % 2 === 0;
+    const t = performance.now() / 1000;
     this.cars.forEach((car, i) => {
       car.updateMatrix();
       this.shellEuler.set(0, -Math.PI / 2, car.userData.shell.rotation.z);
       this.shellMatrix.makeRotationFromEuler(this.shellEuler);
       const spin = car.userData.wheels[0].rotation.z;
       const police = !!car.userData.police;
+      const damage = car.userData.damage || 0;
+      const brake = !!car.userData.brake;
 
       this.parts.forEach(part => {
         const siren = part.key.startsWith('lightbar');
+        const tail = part.key.startsWith('tail');
         const on = siren && police && ((part.key === 'lightbarRed') === redOn);
         this.local.position.set(part.pos[0], part.pos[1], part.pos[2]);
         const rx = part.kind === 'wheel' ? Math.PI / 2 : 0;
@@ -102,18 +133,37 @@ export class CarFleet {
         this.matrix.multiplyMatrices(car.matrix, this.shellMatrix);
         this.matrix.multiply(this.local.matrix);
         part.mesh.setMatrixAt(i, this.matrix);
-        if (part.paint) part.mesh.setColorAt(i, car.userData.paint.color);
+        if (part.paint) {
+          this.tint.copy(car.userData.paint.color).multiplyScalar(1 - damage * 0.42);
+          part.mesh.setColorAt(i, this.tint);
+        }
         if (siren) part.mesh.setColorAt(i, on
           ? (part.key === 'lightbarRed' ? this.sirenRed : this.sirenBlue)
           : this.sirenOff);
+        if (tail) part.mesh.setColorAt(i, brake ? this.tailOn : this.tailOff);
       });
+
+      // Damaged engines trail smoke from the rear of the shell.
+      this.local.position.set(-44, 4, 0);
+      this.local.rotation.set(0, 0, 0);
+      this.local.scale.setScalar(1);
+      this.local.updateMatrix();
+      this.matrix.multiplyMatrices(car.matrix, this.shellMatrix).multiply(this.local.matrix);
+      if (damage > 0.25) {
+        this.smokePos[i * 3] = this.matrix.elements[12] + Math.sin(t * 3 + i) * 3;
+        this.smokePos[i * 3 + 1] = this.matrix.elements[13] + 5 + ((t * 18 + i * 7) % 26);
+        this.smokePos[i * 3 + 2] = this.matrix.elements[14] + Math.cos(t * 2 + i) * 3;
+      } else {
+        this.smokePos[i * 3 + 1] = -1000;
+      }
     });
     this.parts.forEach(part => {
       part.mesh.instanceMatrix.needsUpdate = true;
-      if ((part.paint || part.key.startsWith('lightbar')) && part.mesh.instanceColor) {
+      if ((part.paint || part.key.startsWith('lightbar') || part.key.startsWith('tail')) && part.mesh.instanceColor) {
         part.mesh.instanceColor.needsUpdate = true;
       }
     });
+    this.smokeGeo.attributes.position.needsUpdate = true;
   }
 }
 
