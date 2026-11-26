@@ -153,10 +153,16 @@ export class Game {
     this.started = false;
     this.hintTimer = 0;
 
-    // Mission: a five-checkpoint Vice Run through the city
-    this.mission = { active: false, index: 0, time: 0, completed: 0 };
+    // Missions: three rotating job types with shared marker/HUD plumbing
+    this.missionTypes = ['race', 'courier', 'sweep'];
+    this.missionTypeIndex = 0;
+    this.mission = {
+      active: false, index: 0, time: 0, completed: 0,
+      type: 'race', targetVehicle: null, targetHP: 0
+    };
     this.checkpoints = [];
     this.missionCooldown = 0;
+    this.ramCooldown = 0;
     this.createMissionMarker();
 
     window.addEventListener('keydown', (e) => {
@@ -325,34 +331,120 @@ export class Game {
     this.notify('NEW RUN', 'green');
   }
 
-  /** Start a fresh checkpoint route near the city centre. */
-  startMission() {
-    const anchors = [[220, 220], [420, -180], [180, -420], [-220, -220], [-420, 180]];
-    this.checkpoints = anchors.map(([x, z]) => {
-      const spot = this.city.roadSpawn(x, z);
-      return { x: spot.x, z: spot.z };
-    });
-    this.mission.active = true;
-    this.mission.index = 0;
-    this.mission.time = 0;
+  /** Pick the nearest clean traffic car for a takedown job. */
+  pickMissionTarget() {
+    const px = this.player.position.x, pz = this.player.position.z;
+    let best = null, bestDist = Infinity;
+    for (const v of this.vehicles) {
+      const u = v.userData;
+      if (u.stationary || u.police || v === this.player.currentVehicle) continue;
+      const d = Math.hypot(v.position.x - px, v.position.z - pz);
+      if (d < bestDist) { bestDist = d; best = v; }
+    }
+    if (best) best.userData.missionTarget = true;
+    return best;
+  }
+
+  clearMissionTarget() {
+    if (this.mission.targetVehicle) {
+      this.mission.targetVehicle.userData.missionTarget = false;
+      this.mission.targetVehicle = null;
+    }
+  }
+
+  /** Start the next job in rotation, or force a specific type. */
+  startMission(type) {
+    this.clearMissionTarget();
+    if (type) this.missionTypeIndex = this.missionTypes.indexOf(type);
+    const job = this.missionTypes[this.missionTypeIndex % this.missionTypes.length];
+    this.missionTypeIndex++;
+    const m = this.mission;
+    m.type = job;
+    m.active = true;
+    m.index = 0;
+    m.time = 0;
+    m.targetHP = 0;
     this.missionCooldown = 0;
+    this.ramCooldown = 0;
+
+    const color = job === 'race' ? 0x35f0ff : job === 'courier' ? 0xffc857 : 0xff4d8d;
+    for (const part of Object.values(this.markerParts)) part.material.color.setHex(color);
+
+    if (job === 'race') {
+      const anchors = [[220, 220], [420, -180], [180, -420], [-220, -220], [-420, 180]];
+      this.checkpoints = anchors.map(([x, z]) => {
+        const s = this.city.roadSpawn(x, z);
+        return { x: s.x, z: s.z };
+      });
+      this.notify('VICE RUN  —  5 CHECKPOINTS', 'green');
+    } else if (job === 'courier') {
+      const routes = [
+        [[-420, -180], [240, -420], [420, 220]],
+        [[180, 420], [-420, 220], [-180, -420]],
+        [[420, -220], [-220, 420], [180, -220]]
+      ];
+      const route = routes[m.completed % routes.length];
+      this.checkpoints = route.map(([x, z], i) => {
+        const s = this.city.roadSpawn(x, z);
+        return { x: s.x, z: s.z, label: i % 2 === 0 ? 'PICKUP' : 'DROPOFF' };
+      });
+      this.notify('COURIER  —  3 STOPS', 'gold');
+    } else {
+      this.checkpoints = [];
+      m.targetVehicle = this.pickMissionTarget();
+      m.targetHP = 100;
+      this.notify(m.targetVehicle ? 'TAKEDOWN  —  RAM THE MARKED CAR' : 'TAKEDOWN  —  LOCATE A VEHICLE', 'pink');
+    }
     this.placeMissionMarker();
-    this.notify('VICE RUN  —  5 CHECKPOINTS', 'green');
   }
 
   placeMissionMarker() {
-    const cp = this.checkpoints[this.mission.index];
+    const m = this.mission;
+    if (m.type === 'sweep') {
+      const target = m.targetVehicle;
+      if (!target) { this.missionMarker.visible = false; return; }
+      this.missionMarker.position.set(target.position.x, 0, target.position.z);
+      this.missionMarker.visible = true;
+      return;
+    }
+    const cp = this.checkpoints[m.index];
     if (!cp) { this.missionMarker.visible = false; return; }
     this.missionMarker.position.set(cp.x, 0, cp.z);
     this.missionMarker.visible = true;
   }
 
   missionBonus() {
-    return Math.max(500, 2500 - Math.floor(this.mission.time) * 20);
+    const base = this.mission.type === 'sweep' ? 3000
+      : this.mission.type === 'courier' ? 1800 : 2500;
+    const decay = this.mission.type === 'sweep' ? 12 : 20;
+    return Math.max(500, base - Math.floor(this.mission.time) * decay);
+  }
+
+  completeMission(label) {
+    const m = this.mission;
+    const bonus = this.missionBonus();
+    this.cash += bonus;
+    m.active = false;
+    m.completed++;
+    this.missionCooldown = 4;
+    this.missionMarker.visible = false;
+    this.clearMissionTarget();
+    this.notify(`${label}  +$${bonus}`, 'green');
+    this.audio?.complete();
+  }
+
+  failMission(label) {
+    const m = this.mission;
+    m.active = false;
+    this.missionCooldown = 5;
+    this.missionMarker.visible = false;
+    this.clearMissionTarget();
+    this.notify(label, 'pink');
   }
 
   updateMission(dt) {
     const m = this.mission;
+    this.ramCooldown = Math.max(0, this.ramCooldown - dt);
     if (!m.active) {
       if (this.missionCooldown > 0) {
         this.missionCooldown -= dt;
@@ -361,25 +453,43 @@ export class Game {
       return;
     }
     m.time += dt;
-    const cp = this.checkpoints[m.index];
-    if (cp && Math.hypot(this.player.position.x - cp.x, this.player.position.z - cp.z) < 55) {
-      this.cash += 400;
-      m.index++;
-      if (m.index >= this.checkpoints.length) {
-        m.active = false;
-        m.completed++;
-        const bonus = this.missionBonus();
-        this.cash += bonus;
-        this.missionCooldown = 4;
-        this.missionMarker.visible = false;
-        this.notify(`MISSION COMPLETE  +$${bonus}`, 'green');
-        this.audio?.complete();
-      } else {
-        this.placeMissionMarker();
-        this.notify(`CHECKPOINT ${m.index}/${this.checkpoints.length}  +$400`, 'green');
-        this.audio?.checkpoint();
+
+    if (m.type === 'sweep') {
+      const target = m.targetVehicle;
+      if (!target) { this.failMission('TARGET LOST  —  NEW JOB INCOMING'); return; }
+      const dx = target.position.x - this.player.position.x;
+      const dz = target.position.z - this.player.position.z;
+      const dist = Math.hypot(dx, dz);
+      if (dist > 1100) { this.failMission('TARGET LOST  —  NEW JOB INCOMING'); return; }
+      this.missionMarker.position.set(target.position.x, 0, target.position.z);
+      if (this.player.inVehicle && dist < 34 && Math.abs(this.player.speed) > 16 && this.ramCooldown <= 0) {
+        const dmg = Math.abs(this.player.speed) * 0.16;
+        m.targetHP -= dmg;
+        this.ramCooldown = 0.45;
+        this.cash += 20;
+        this.shake = Math.min(2.4, 0.5 + dmg * 0.07);
+        this.flashHit();
+        this.audio?.crash();
+        if (target.userData.paint) target.userData.paint.color.offsetHSL(0, 0, -0.02);
+        if (m.targetHP <= 0) { this.completeMission('TARGET WRECKED'); return; }
+        this.notify(`TARGET DAMAGE  ${Math.max(0, Math.ceil(m.targetHP))}%`, 'pink');
+      }
+    } else {
+      const cp = this.checkpoints[m.index];
+      if (cp && Math.hypot(this.player.position.x - cp.x, this.player.position.z - cp.z) < 55) {
+        const pay = m.type === 'courier' ? 350 : 400;
+        this.cash += pay;
+        m.index++;
+        if (m.index >= this.checkpoints.length) {
+          this.completeMission(m.type === 'courier' ? 'DELIVERY COMPLETE' : 'VICE RUN COMPLETE');
+        } else {
+          this.placeMissionMarker();
+          this.notify(`${cp.label || 'CHECKPOINT'} ${m.index}/${this.checkpoints.length}  +$${pay}`, 'green');
+          this.audio?.checkpoint();
+        }
       }
     }
+
     if (this.missionMarker.visible) {
       const t = performance.now() / 1000;
       this.missionMarker.rotation.y = t * 0.8;
@@ -506,8 +616,8 @@ export class Game {
 
     const m = !!this.keys['m'];
     if (m && !this.prevM) {
-      this.missionCooldown = 0;
-      this.startMission();
+      const next = this.missionTypes[this.missionTypeIndex % this.missionTypes.length];
+      this.startMission(next);
     }
     this.prevM = m;
 
@@ -966,15 +1076,22 @@ export class Game {
     if (mt && mo && mm) {
       const m = this.mission;
       if (m.active) {
-        mt.textContent = 'VICE RUN';
-        mo.textContent = `CHECKPOINT ${m.index + 1} / ${this.checkpoints.length}`;
+        const titles = { race: 'VICE RUN', courier: 'COURIER', sweep: 'TAKEDOWN' };
+        mt.textContent = titles[m.type];
+        if (m.type === 'sweep') {
+          const hp = Math.max(0, Math.ceil(m.targetHP));
+          mo.textContent = this.player.inVehicle ? `TARGET INTEGRITY  ${hp}%` : 'GET IN A VEHICLE';
+        } else {
+          const label = m.type === 'courier' ? (this.checkpoints[m.index]?.label || 'STOP') : 'CHECKPOINT';
+          mo.textContent = `${label} ${m.index + 1} / ${this.checkpoints.length}`;
+        }
         const secs = String(Math.floor(m.time % 60)).padStart(2, '0');
         const mins = String(Math.floor(m.time / 60)).padStart(2, '0');
         mm.textContent = `${mins}:${secs}   ·   BONUS $${this.missionBonus()}`;
       } else {
-        mt.textContent = 'MISSION COMPLETE';
-        mo.textContent = 'PRESS M FOR ANOTHER RUN';
-        mm.textContent = `RUNS COMPLETED  ${m.completed}`;
+        mt.textContent = 'JOB COMPLETE';
+        mo.textContent = 'PRESS M FOR NEXT JOB';
+        mm.textContent = `JOBS COMPLETED  ${m.completed}`;
       }
     }
 
@@ -1062,17 +1179,23 @@ export class Game {
       c.beginPath(); c.arc(x, y, 3.5, 0, Math.PI * 2); c.fill();
     });
 
-    // Active checkpoint
-    if (this.mission.active && this.checkpoints[this.mission.index]) {
-      const cp = this.checkpoints[this.mission.index];
-      const [x, y] = map(cp.x, cp.z);
+    // Active objective (checkpoint or pursuit target)
+    const objective = this.mission.type === 'sweep'
+      ? this.mission.targetVehicle?.position
+      : this.checkpoints[this.mission.index];
+    if (this.mission.active && objective) {
+      const [x, y] = map(objective.x, objective.z);
       if (Math.abs(x) < mid && Math.abs(y) < mid) {
+        const color = this.mission.type === 'courier' ? '#ffc857'
+          : this.mission.type === 'sweep' ? '#ff4d8d' : '#35f0ff';
         const pulse = 11 + Math.sin(performance.now() * 0.005) * 3;
-        c.strokeStyle = 'rgba(53,240,255,.8)';
+        c.strokeStyle = color;
+        c.globalAlpha = 0.8;
         c.lineWidth = 2;
         c.beginPath(); c.arc(x, y, pulse, 0, Math.PI * 2); c.stroke();
+        c.globalAlpha = 1;
         c.save(); c.translate(x, y); c.rotate(Math.PI / 4);
-        c.fillStyle = '#35f0ff'; c.fillRect(-6, -6, 12, 12); c.restore();
+        c.fillStyle = color; c.fillRect(-6, -6, 12, 12); c.restore();
       }
     }
 

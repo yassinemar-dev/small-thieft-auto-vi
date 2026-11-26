@@ -20,13 +20,13 @@ Open <http://localhost:5173/>. Use `npm run build` for a production bundle.
 | `R` | Repair damage and restore health/armor |
 | `Shift` | Run |
 | `Space` | Handbrake while driving |
-| `M` | Start a new Vice Run checkpoint mission |
+| `M` | Skip to the next job (Vice Run / Courier / Takedown) |
 | `Esc` / `P` | Pause menu (resume or restart) |
 | Mouse | Look around (click the canvas to lock the pointer) |
 
 ## Features
 
-- **Vice Run missions** — five glowing checkpoints, per-checkpoint cash, a decaying time bonus and automatic restart after completion.
+- **Three rotating jobs** — Vice Run (five checkpoints), Courier (three pickup/drop-off stops) and Takedown (ram a marked car until wrecked), each with per-objective cash, a decaying time bonus and automatic rotation after completion. Press `M` to skip to the next job.
 - **Wanted system** — crashes and pedestrian hits raise up to five stars; nearby traffic turns into pursuing police cruisers with flashing red/blue lightbars and ramming AI.
 - **Death and respawn** — a `WASTED` screen, hospital bill, cleared wanted level and respawn near the starter car.
 - **Driving model** — acceleration, reverse, speed-sensitive steering, handbrake, body roll, wheel spin, collisions, brake lights, damage tint and engine smoke.

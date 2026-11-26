@@ -209,6 +209,7 @@ html, body {
 #notification.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 #notification.pink { color: #ff5ca8; }
 #notification.green { color: #7dffb2; }
+#notification.gold { color: #ffc857; }
 
 /* ---------- Death / respawn ---------- */
 #death-screen {
