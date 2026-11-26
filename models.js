@@ -10,100 +10,97 @@ const chromeMat = new THREE.MeshStandardMaterial({ color: 0xdfe6ef, metalness: 1
 const lightMat = new THREE.MeshStandardMaterial({ color: 0xfff2c0, emissive: 0xffe8a0, emissiveIntensity: 1.4 });
 const tailMat = new THREE.MeshStandardMaterial({ color: 0xff2038, emissive: 0xff1020, emissiveIntensity: 1.2 });
 
-function roundedBody(w, h, d, color) {
-  const g = new THREE.Group();
-  const paint = new THREE.MeshStandardMaterial({ color, metalness: 0.55, roughness: 0.32 });
+/* ------------------------------------------------------------------ */
+/*  Instanced traffic fleet — every car shares one mesh per body part.  */
+/*  Proxies keep the existing driving/collision code unchanged.         */
+/* ------------------------------------------------------------------ */
 
-  const lower = new THREE.Mesh(new THREE.BoxGeometry(w, h * 0.7, d), paint);
-  lower.position.y = h * 0.15;
-  lower.castShadow = true;
-  g.add(lower);
-
-  const upper = new THREE.Mesh(new THREE.BoxGeometry(w * 0.96, h * 0.3, d * 0.96), paint);
-  upper.position.y = h * 0.62;
-  upper.castShadow = true;
-  g.add(upper);
-
-  const skirt = new THREE.MeshStandardMaterial({ color: 0x16161c, roughness: 0.8 });
-  [-1, 1].forEach(s => {
-    const sk = new THREE.Mesh(new THREE.BoxGeometry(w * 0.9, h * 0.18, 2), skirt);
-    sk.position.set(0, -h * 0.22, s * (d / 2 - 1));
-    g.add(sk);
-  });
-  return { group: g, paint };
+/** A lightweight transform + style proxy. The real geometry lives in CarFleet. */
+export function createCarProxy(color) {
+  const car = new THREE.Group();
+  car.userData.paint = { color: new THREE.Color(color) };
+  car.userData.shell = { rotation: { z: 0 } };
+  // Eight simple objects so player.js can spin wheels without knowing about instancing.
+  car.userData.wheels = Array.from({ length: 8 }, () => ({ rotation: { z: 0 } }));
+  return car;
 }
 
-export function createCar(color) {
-  const car = new THREE.Group();
-  // Inner shell: models are authored nose-down-+X, but driving physics uses
-  // heading 0 = +Z. Rotate the shell so the visual nose matches movement.
-  const shell = new THREE.Group();
-  shell.rotation.y = -Math.PI / 2;
-  car.add(shell);
+export class CarFleet {
+  constructor(cars, scene) {
+    this.cars = cars;
+    this.local = new THREE.Object3D();
+    this.matrix = new THREE.Matrix4();
+    this.shellMatrix = new THREE.Matrix4();
+    this.shellEuler = new THREE.Euler(0, -Math.PI / 2, 0);
+    this.parts = [];
 
-  const { group: body, paint } = roundedBody(86, 26, 40, color);
-  shell.add(body);
+    const paintMat = new THREE.MeshStandardMaterial({ color: 0xffffff, metalness: 0.55, roughness: 0.32 });
+    const darkMat = new THREE.MeshStandardMaterial({ color: 0x16161c, roughness: 0.8 });
+    const pillarMat = new THREE.MeshStandardMaterial({ color: 0x1a1a20, metalness: 0.4, roughness: 0.5 });
+    const creaseMat = new THREE.MeshStandardMaterial({ color: 0xffffff, transparent: true, opacity: 0.06 });
 
-  const creaseMat = new THREE.MeshStandardMaterial({ color: 0xffffff, transparent: true, opacity: 0.06 });
-  const hood = new THREE.Mesh(new THREE.BoxGeometry(34, 0.6, 34), creaseMat);
-  hood.position.set(25, 14, 0);
-  shell.add(hood);
+    // Coordinates below are in the original model space: +X = nose, Y up, Z across.
+    const parts = [
+      ['bodyLower', new THREE.BoxGeometry(86, 18.2, 40), [0, 3.9, 0], () => paintMat, null, true],
+      ['bodyUpper', new THREE.BoxGeometry(82.56, 7.8, 38.4), [0, 16.12, 0], () => paintMat, null, true],
+      ['skirtA', new THREE.BoxGeometry(77.4, 4.68, 2), [0, -5.72, -19], () => darkMat],
+      ['skirtB', new THREE.BoxGeometry(77.4, 4.68, 2), [0, -5.72, 19], () => darkMat],
+      ['hood', new THREE.BoxGeometry(34, 0.6, 34), [25, 14, 0], () => creaseMat],
+      ['cabin', new THREE.BoxGeometry(46, 18, 34), [-6, 23, 0], () => glassMat],
+      ['wind', new THREE.BoxGeometry(2, 17, 31), [17, 23, 0], () => glassMat, null, false, -0.5],
+      ['pillarA', new THREE.BoxGeometry(3, 18, 3), [-6, 23, -16], () => pillarMat],
+      ['pillarB', new THREE.BoxGeometry(3, 18, 3), [-6, 23, 16], () => pillarMat],
+      ['wheelFL', new THREE.CylinderGeometry(10, 10, 7, 20), [-27, -6, -20], () => tireMat, 'wheel'],
+      ['wheelFR', new THREE.CylinderGeometry(10, 10, 7, 20), [-27, -6, 20], () => tireMat, 'wheel'],
+      ['wheelRL', new THREE.CylinderGeometry(10, 10, 7, 20), [27, -6, -20], () => tireMat, 'wheel'],
+      ['wheelRR', new THREE.CylinderGeometry(10, 10, 7, 20), [27, -6, 20], () => tireMat, 'wheel'],
+      ['rimFL', new THREE.CylinderGeometry(5.5, 5.5, 7.4, 10), [-27, -6, -20], () => rimMat, 'wheel'],
+      ['rimFR', new THREE.CylinderGeometry(5.5, 5.5, 7.4, 10), [-27, -6, 20], () => rimMat, 'wheel'],
+      ['rimRL', new THREE.CylinderGeometry(5.5, 5.5, 7.4, 10), [27, -6, -20], () => rimMat, 'wheel'],
+      ['rimRR', new THREE.CylinderGeometry(5.5, 5.5, 7.4, 10), [27, -6, 20], () => rimMat, 'wheel'],
+      ['headA', new THREE.BoxGeometry(2, 5, 9), [43, 4, -12], () => lightMat],
+      ['headB', new THREE.BoxGeometry(2, 5, 9), [43, 4, 12], () => lightMat],
+      ['tailA', new THREE.BoxGeometry(2, 4, 9), [-43, 4, -12], () => tailMat],
+      ['tailB', new THREE.BoxGeometry(2, 4, 9), [-43, 4, 12], () => tailMat],
+      ['grille', new THREE.BoxGeometry(2, 5, 22), [43, -3, 0], () => chromeMat]
+    ];
 
-  const cabin = new THREE.Mesh(new THREE.BoxGeometry(46, 18, 34), glassMat);
-  cabin.position.set(-6, 23, 0);
-  cabin.castShadow = true;
-  shell.add(cabin);
+    parts.forEach(([key, geo, pos, makeMat, kind, paint, extraRotZ]) => {
+      const mesh = new THREE.InstancedMesh(geo, makeMat(), cars.length);
+      mesh.castShadow = key !== 'hood' && key !== 'rimFL' && key !== 'rimFR' && key !== 'rimRL' && key !== 'rimRR';
+      mesh.frustumCulled = false;
+      scene.add(mesh);
+      this.parts.push({ key, mesh, pos, kind, paint, extraRotZ });
+    });
+    this.sync();
+  }
 
-  const wind = new THREE.Mesh(new THREE.BoxGeometry(2, 17, 31), glassMat);
-  wind.position.set(17, 23, 0);
-  wind.rotation.z = -0.5;
-  shell.add(wind);
+  /** Push proxy transforms, paint, body roll and wheel spin to the GPU. */
+  sync() {
+    this.cars.forEach((car, i) => {
+      car.updateMatrix();
+      this.shellEuler.set(0, -Math.PI / 2, car.userData.shell.rotation.z);
+      this.shellMatrix.makeRotationFromEuler(this.shellEuler);
+      const spin = car.userData.wheels[0].rotation.z;
 
-  const pillar = new THREE.MeshStandardMaterial({ color: 0x1a1a20, metalness: 0.4, roughness: 0.5 });
-  [-1, 1].forEach(s => {
-    const p = new THREE.Mesh(new THREE.BoxGeometry(3, 18, 3), pillar);
-    p.position.set(-6, 23, s * 16);
-    shell.add(p);
-  });
-
-  // Wheels — stored on userData so animation can find them reliably
-  const wheels = [];
-  const wheelGeo = new THREE.CylinderGeometry(10, 10, 7, 20);
-  const rimGeo = new THREE.CylinderGeometry(5.5, 5.5, 7.4, 10);
-  [[-27, -20], [-27, 20], [27, -20], [27, 20]].forEach(([x, z]) => {
-    const wheel = new THREE.Mesh(wheelGeo, tireMat);
-    wheel.rotation.x = Math.PI / 2;
-    wheel.position.set(x, -6, z);
-    wheel.castShadow = true;
-    shell.add(wheel);
-    wheels.push(wheel);
-    const rim = new THREE.Mesh(rimGeo, rimMat);
-    rim.rotation.x = Math.PI / 2;
-    rim.position.set(x, -6, z);
-    shell.add(rim);
-    wheels.push(rim);
-  });
-
-  [-1, 1].forEach(s => {
-    const hl = new THREE.Mesh(new THREE.BoxGeometry(2, 5, 9), lightMat);
-    hl.position.set(43, 4, s * 12);
-    shell.add(hl);
-    const tl = new THREE.Mesh(new THREE.BoxGeometry(2, 4, 9), tailMat);
-    tl.position.set(-43, 4, s * 12);
-    shell.add(tl);
-  });
-
-  const grille = new THREE.Mesh(new THREE.BoxGeometry(2, 5, 22), chromeMat);
-  grille.position.set(43, -3, 0);
-  shell.add(grille);
-
-  // Emissive lamps above provide the headlight look without dozens of
-  // dynamic lights slowing down every material shader.
-
-  car.userData.paint = paint;
-  car.userData.wheels = wheels;
-  car.userData.shell = shell;
-  return car;
+      this.parts.forEach(part => {
+        this.local.position.set(part.pos[0], part.pos[1], part.pos[2]);
+        const rx = part.kind === 'wheel' ? Math.PI / 2 : 0;
+        const rz = part.kind === 'wheel' ? spin : (part.extraRotZ || 0);
+        this.local.rotation.set(rx, 0, rz);
+        this.local.scale.setScalar(1);
+        this.local.updateMatrix();
+        this.matrix.multiplyMatrices(car.matrix, this.shellMatrix);
+        this.matrix.multiply(this.local.matrix);
+        part.mesh.setMatrixAt(i, this.matrix);
+        if (part.paint) part.mesh.setColorAt(i, car.userData.paint.color);
+      });
+    });
+    this.parts.forEach(part => {
+      part.mesh.instanceMatrix.needsUpdate = true;
+      if (part.paint && part.mesh.instanceColor) part.mesh.instanceColor.needsUpdate = true;
+    });
+  }
 }
 
 /* ------------------------------------------------------------------ */

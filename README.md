@@ -25,6 +25,7 @@ Then open http://localhost:5173/
 ## Features
 
 - Instanced pedestrian crowd: 64 animated walkers rendered in 10 draw calls
+- Instanced traffic fleet: 43 cars rendered in 22 draw calls with per-car paint, wheel spin and body roll
 - Third-person camera with obstacle avoidance, shake and over-the-shoulder framing
 - Detailed articulated player character with walk/run and seated driving animation
 - Drivable vehicles with steering, acceleration, handbrake and collisions

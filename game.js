@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { City } from './city.js';
 import { Player } from './player.js';
-import { createCar, createPedestrianProxy, PedestrianCrowd } from './models.js';
+import { createCarProxy, CarFleet, createPedestrianProxy, PedestrianCrowd } from './models.js';
 
 const CAR_COLORS = [
   0xff2e63, 0x00d4ff, 0xffd23f, 0x9b5cff, 0x2eff9f,
@@ -85,6 +85,8 @@ export class Game {
     const starter = this.createVehicle(0, -80, 0);
     starter.userData.stationary = true; // wait at the spawn point for the player
     this.vehicles.push(starter);
+    // One instanced mesh per car part instead of ~900 individual meshes
+    this.cars = new CarFleet(this.vehicles, this.scene);
 
     // Pedestrians — most start close to the player so the sidewalks feel alive
     this.pedestrians = [];
@@ -127,13 +129,12 @@ export class Game {
 
   createVehicle(x, z, dir) {
     const color = CAR_COLORS[(Math.random() * CAR_COLORS.length) | 0];
-    const car = createCar(color);
+    const car = createCarProxy(color);
     const spot = this.city.roadSpawn(x, z);
     car.position.set(spot.x, 15, spot.z);
     car.rotation.y = dir !== undefined ? dir : spot.dir + (Math.random() > 0.5 ? Math.PI : 0);
     car.userData.aiSpeed = 12 + Math.random() * 10;
     car.userData.aiTarget = car.rotation.y;
-    this.scene.add(car);
     return car;
   }
 
@@ -459,6 +460,7 @@ export class Game {
       }
     });
     this.crowd.sync();
+    this.cars.sync();
 
     // ---- Wanted decay ----
     if (this.wanted > 0) {
