@@ -6,6 +6,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { AfterimagePass } from 'three/addons/postprocessing/AfterimagePass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { Lensflare, LensflareElement } from 'three/addons/objects/Lensflare.js';
 
 const canvas = document.getElementById('game-canvas');
@@ -204,6 +205,10 @@ const composer = new EffectComposer(renderer, composerTarget);
 composer.addPass(new RenderPass(scene, camera));
 const afterimage = new AfterimagePass(0.12);
 composer.addPass(afterimage);
+const bloom = new UnrealBloomPass(
+  new THREE.Vector2(window.innerWidth, window.innerHeight), 0.55, 0.45, 0.82
+);
+composer.addPass(bloom);
 const grade = new ShaderPass(GradeShader);
 composer.addPass(grade);
 composer.addPass(new OutputPass());
@@ -211,6 +216,7 @@ composer.addPass(new OutputPass());
 if (import.meta.env.DEV) {
   window.__renderer = renderer;
   window.__composer = composer;
+  window.__bloom = bloom;
 }
 
 // ---- Game ----
