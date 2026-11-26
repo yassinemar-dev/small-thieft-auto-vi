@@ -300,88 +300,85 @@ export function animatePlayer(mesh, speed, dt, inVehicle = false) {
 }
 
 /* ------------------------------------------------------------------ */
-/*  Generic background pedestrians (lighter than the hero model)       */
+/*  Instanced background crowd — one draw call per body part, not per   */
+/*  pedestrian. Proxies keep the old transform-based game logic intact. */
 /* ------------------------------------------------------------------ */
 
 const skinTones = [0xf0c8a0, 0xd9a070, 0xa96b47, 0x7a4a32, 0xffd9b8];
 const shirtColors = [0xff4f81, 0x35c9ff, 0xffd23f, 0x8b5cf6, 0x34d399, 0xf97316, 0xf1f5f9];
 const pantColors = [0x1e293b, 0x334155, 0x3f2d52, 0x2b3a4a];
+const bagColors = [0xf97316, 0x34d399, 0xe2e8f0];
 
-export function createPedestrian() {
+/** A transform proxy with style data, but no meshes of its own. */
+export function createPedestrianProxy() {
   const g = new THREE.Group();
-  const skin = new THREE.MeshStandardMaterial({ color: skinTones[(Math.random() * skinTones.length) | 0], roughness: 0.85 });
-  const shirt = new THREE.MeshStandardMaterial({ color: shirtColors[(Math.random() * shirtColors.length) | 0], roughness: 0.8 });
-  const pants = new THREE.MeshStandardMaterial({ color: pantColors[(Math.random() * pantColors.length) | 0], roughness: 0.9 });
-
-  const torso = new THREE.Mesh(new THREE.BoxGeometry(11, 16, 7), shirt);
-  torso.position.y = 18;
-  torso.castShadow = true;
-  g.add(torso);
-
-  const hips = new THREE.Mesh(new THREE.BoxGeometry(10, 5, 7), pants);
-  hips.position.y = 9;
-  g.add(hips);
-
-  const head = new THREE.Mesh(new THREE.SphereGeometry(5.2, 14, 12), skin);
-  head.position.y = 32;
-  head.castShadow = true;
-  g.add(head);
-
-  const hairCap = new THREE.Mesh(
-    new THREE.SphereGeometry(5.35, 14, 10, 0, Math.PI * 2, 0, Math.PI * 0.55),
-    new THREE.MeshStandardMaterial({ color: Math.random() > 0.2 ? 0x1b1412 : 0x9a6a3a, roughness: 1 })
-  );
-  hairCap.position.y = 32.5;
-  g.add(hairCap);
-
-  const armGeo = new THREE.BoxGeometry(3.5, 14, 4);
-  const legGeo = new THREE.BoxGeometry(4.2, 13, 5);
-  const arms = [], legs = [];
-
-  [-1, 1].forEach(s => {
-    const arm = new THREE.Mesh(armGeo, shirt);
-    arm.position.set(s * 7, 18, 0);
-    arm.castShadow = true;
-    g.add(arm); arms.push(arm);
-
-    const leg = new THREE.Mesh(legGeo, pants);
-    leg.position.set(s * 2.6, 4, 0);
-    leg.castShadow = true;
-    g.add(leg); legs.push(leg);
-  });
-
-  // Small street-life accessories — cheap, but they break up the crowd
-  if (Math.random() > 0.55) {
-    const shades = new THREE.Mesh(
-      new THREE.BoxGeometry(10, 1.5, 1),
-      new THREE.MeshStandardMaterial({ color: 0x141820, roughness: 0.35, metalness: 0.2 })
-    );
-    shades.position.set(0, 33, 4.6);
-    g.add(shades);
-  }
-  if (Math.random() > 0.6) {
-    const bag = new THREE.Mesh(
-      new THREE.BoxGeometry(6, 9, 3),
-      new THREE.MeshStandardMaterial({
-        color: [0xf97316, 0x34d399, 0xe2e8f0][(Math.random() * 3) | 0], roughness: 0.9
-      })
-    );
-    bag.position.set(8, 14, 2.5);
-    bag.castShadow = true;
-    g.add(bag);
-  }
-
-  g.userData = { arms, legs, phase: Math.random() * Math.PI * 2 };
+  g.userData = {
+    skin: skinTones[(Math.random() * skinTones.length) | 0],
+    shirt: shirtColors[(Math.random() * shirtColors.length) | 0],
+    pants: pantColors[(Math.random() * pantColors.length) | 0],
+    hair: Math.random() > 0.2 ? 0x1b1412 : 0x9a6a3a,
+    shades: Math.random() > 0.55,
+    bag: Math.random() > 0.6 ? bagColors[(Math.random() * bagColors.length) | 0] : 0,
+    phase: Math.random() * Math.PI * 2,
+    swing: 0
+  };
   return g;
 }
 
-export function animatePedestrian(mesh, speed, dt) {
-  const u = mesh.userData;
-  if (!u.arms) return;
-  u.phase += dt * (4 + speed * 0.6);
-  const sw = Math.sin(u.phase) * Math.min(0.6, speed * 0.08);
-  u.arms[0].rotation.x = sw;
-  u.arms[1].rotation.x = -sw;
-  u.legs[0].rotation.x = -sw;
-  u.legs[1].rotation.x = sw;
+export class PedestrianCrowd {
+  constructor(proxies, scene) {
+    this.proxies = proxies;
+    this.local = new THREE.Object3D();
+    this.matrix = new THREE.Matrix4();
+    this.parts = [];
+
+    const parts = [
+      ['torso', new THREE.BoxGeometry(11, 16, 7), [0, 18, 0], p => p.userData.shirt],
+      ['hips', new THREE.BoxGeometry(10, 5, 7), [0, 9, 0], p => p.userData.pants],
+      ['head', new THREE.SphereGeometry(5.2, 14, 12), [0, 32, 0], p => p.userData.skin],
+      ['hair', new THREE.SphereGeometry(5.35, 14, 10, 0, Math.PI * 2, 0, Math.PI * 0.55), [0, 32.5, 0], p => p.userData.hair],
+      ['armL', new THREE.BoxGeometry(3.5, 14, 4), [-7, 18, 0], p => p.userData.shirt, p => p.userData.swing],
+      ['armR', new THREE.BoxGeometry(3.5, 14, 4), [7, 18, 0], p => p.userData.shirt, p => -p.userData.swing],
+      ['legL', new THREE.BoxGeometry(4.2, 13, 5), [-2.6, 4, 0], p => p.userData.pants, p => -p.userData.swing],
+      ['legR', new THREE.BoxGeometry(4.2, 13, 5), [2.6, 4, 0], p => p.userData.pants, p => p.userData.swing],
+      ['shades', new THREE.BoxGeometry(10, 1.5, 1), [0, 33, 4.6], () => 0x141820, null, p => p.userData.shades],
+      ['bag', new THREE.BoxGeometry(6, 9, 3), [8, 14, 2.5], p => p.userData.bag, null, p => !!p.userData.bag]
+    ];
+
+    parts.forEach(([key, geo, pos, color, swing, visible]) => {
+      const mat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: key === 'shades' ? 0.35 : 0.85 });
+      const mesh = new THREE.InstancedMesh(geo, mat, proxies.length);
+      mesh.castShadow = key !== 'hair' && key !== 'shades';
+      mesh.frustumCulled = false;
+      proxies.forEach((p, i) => mesh.setColorAt(i, new THREE.Color(color(p))));
+      if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+      scene.add(mesh);
+      this.parts.push({ key, mesh, pos, swing, visible });
+    });
+    this.sync();
+  }
+
+  /** Advance the walk cycle for one proxy. */
+  animate(proxy, speed, dt) {
+    const u = proxy.userData;
+    u.phase += dt * (4 + speed * 0.6);
+    u.swing = Math.sin(u.phase) * Math.min(0.6, speed * 0.08);
+  }
+
+  /** Push all proxy transforms (including knocked-down tilt) to the GPU. */
+  sync() {
+    this.proxies.forEach((proxy, i) => {
+      proxy.updateMatrix();
+      this.parts.forEach(part => {
+        const on = part.visible ? part.visible(proxy) : true;
+        this.local.position.set(part.pos[0], part.pos[1], part.pos[2]);
+        this.local.rotation.set(part.swing ? part.swing(proxy) : 0, 0, 0);
+        this.local.scale.setScalar(on ? 1 : 0);
+        this.local.updateMatrix();
+        this.matrix.multiplyMatrices(proxy.matrix, this.local.matrix);
+        part.mesh.setMatrixAt(i, this.matrix);
+      });
+    });
+    this.parts.forEach(part => { part.mesh.instanceMatrix.needsUpdate = true; });
+  }
 }

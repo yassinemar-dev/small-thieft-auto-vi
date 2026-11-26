@@ -24,6 +24,7 @@ Then open http://localhost:5173/
 
 ## Features
 
+- Instanced pedestrian crowd: 64 animated walkers rendered in 10 draw calls
 - Third-person camera with obstacle avoidance, shake and over-the-shoulder framing
 - Detailed articulated player character with walk/run and seated driving animation
 - Drivable vehicles with steering, acceleration, handbrake and collisions

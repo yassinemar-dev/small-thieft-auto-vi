@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { City } from './city.js';
 import { Player } from './player.js';
-import { createCar, createPedestrian, animatePedestrian } from './models.js';
+import { createCar, createPedestrianProxy, PedestrianCrowd } from './models.js';
 
 const CAR_COLORS = [
   0xff2e63, 0x00d4ff, 0xffd23f, 0x9b5cff, 0x2eff9f,
@@ -93,6 +93,8 @@ export class Game {
       this.placePedestrian(ped, i < 46);
       this.pedestrians.push(ped);
     }
+    // One instanced mesh per body part instead of ~600 individual draw calls
+    this.crowd = new PedestrianCrowd(this.pedestrians.map(p => p.mesh), this.scene);
 
     // Player
     this.player = new Player(scene);
@@ -136,10 +138,8 @@ export class Game {
   }
 
   createPedestrian() {
-    const mesh = createPedestrian();
-    const ped = { mesh, vx: 0, vz: 0, alive: true, knocked: 0 };
-    this.scene.add(mesh);
-    return ped;
+    const mesh = createPedestrianProxy();
+    return { mesh, vx: 0, vz: 0, alive: true, knocked: 0 };
   }
 
   /** Put a walker on a sidewalk lane, facing a steady direction. */
@@ -418,7 +418,7 @@ export class Game {
       p.mesh.position.x = res.x;
       p.mesh.position.z = res.z;
       p.mesh.rotation.y = Math.atan2(p.vx, p.vz);
-      animatePedestrian(p.mesh, Math.hypot(p.vx, p.vz), dt);
+      this.crowd.animate(p.mesh, Math.hypot(p.vx, p.vz), dt);
 
       // At the next corner some walkers turn down the cross street
       const travel = alongZ ? p.mesh.position.z : p.mesh.position.x;
@@ -458,6 +458,7 @@ export class Game {
         this.notify('PEDESTRIAN HIT', 'pink');
       }
     });
+    this.crowd.sync();
 
     // ---- Wanted decay ----
     if (this.wanted > 0) {
