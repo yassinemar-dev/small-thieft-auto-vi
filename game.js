@@ -48,10 +48,30 @@ export class Game {
     ground.receiveShadow = true;
     scene.add(ground);
 
-    // Ocean strips (Vice City coastline)
+    // Ocean strips (Vice City coastline) with a slowly drifting shimmer
+    const waterCv = document.createElement('canvas');
+    waterCv.width = waterCv.height = 128;
+    const wc = waterCv.getContext('2d');
+    wc.fillStyle = '#ffffff';
+    wc.fillRect(0, 0, 128, 128);
+    for (let i = 0; i < 28; i++) {
+      const y = Math.random() * 128;
+      wc.strokeStyle = Math.random() > 0.5 ? 'rgba(255,255,255,.26)' : 'rgba(90,140,160,.18)';
+      wc.lineWidth = 1 + Math.random() * 2;
+      wc.beginPath();
+      wc.moveTo(0, y);
+      for (let x = 0; x <= 128; x += 16) wc.lineTo(x, y + Math.sin(x * 0.12 + i) * 2);
+      wc.stroke();
+    }
+    const waterTex = new THREE.CanvasTexture(waterCv);
+    waterTex.wrapS = waterTex.wrapT = THREE.RepeatWrapping;
+    waterTex.repeat.set(6, 24);
+    waterTex.colorSpace = THREE.SRGBColorSpace;
+    this.waterTex = waterTex;
+
     const oceanMat = new THREE.MeshStandardMaterial({
       color: 0x0e6f8e, metalness: 0.5, roughness: 0.25,
-      transparent: true, opacity: 0.9
+      map: waterTex, transparent: true, opacity: 0.9
     });
     [-1, 1].forEach(s => {
       const water = new THREE.Mesh(new THREE.PlaneGeometry(600, 6000), oceanMat);
@@ -504,6 +524,8 @@ export class Game {
     // ---- AI traffic: lanes, intersection turns and spacing ----
     const DIRS = [0, Math.PI / 2, Math.PI, -Math.PI / 2];
     const time = performance.now() / 1000;
+    this.waterTex.offset.y += dt * 0.045;
+    this.waterTex.offset.x = Math.sin(time * 0.15) * 0.012;
     this.city.updateTrafficLights(time);
 
     this.vehicles.forEach((v) => {
