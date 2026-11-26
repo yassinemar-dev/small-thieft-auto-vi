@@ -465,8 +465,15 @@ export class Game {
 
     const r = !!this.keys['r'];
     if (r && !this.prevR) {
-      this.player.repair();
-      this.notify('REPAIRED', 'green');
+      const car = this.player.currentVehicle;
+      const damaged = this.player.health < 100 || this.player.armor < 100 ||
+        (car && (car.userData.damage || 0) > 0);
+      if (damaged) {
+        this.player.repair();
+        this.notify('REPAIRED', 'green');
+      } else {
+        this.notify('NO DAMAGE');
+      }
     }
     this.prevR = r;
 
@@ -893,6 +900,8 @@ export class Game {
     const af = document.getElementById('armor-fill');
     if (hf) hf.style.width = this.player.health + '%';
     if (af) af.style.width = this.player.armor + '%';
+    const overlay = document.getElementById('ui-overlay');
+    if (overlay) overlay.classList.toggle('critical', this.player.health <= 30 && !this.player.dead);
 
     const mph = Math.round(Math.abs(this.player.speed) * 4.5);
     set('spd-num', mph);
@@ -957,6 +966,17 @@ export class Game {
     const px = this.player.position.x, pz = this.player.position.z;
     // Rotate the map so the player's heading always points up.
     const angle = this.player.inVehicle ? this.player.rotation - Math.PI : this.yaw;
+
+    // Keep the compass marker honest while the map rotates under the player.
+    const north = document.getElementById('map-north');
+    if (north) {
+      const size = canvas.clientWidth || 210;
+      const midCss = size / 2;
+      const radius = midCss - 13;
+      north.style.left = `${midCss + Math.sin(angle) * radius}px`;
+      north.style.top = `${midCss - Math.cos(angle) * radius}px`;
+      north.style.transform = 'translate(-50%, -50%)';
+    }
 
     c.clearRect(0, 0, S, S);
 
