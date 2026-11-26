@@ -70,13 +70,18 @@ export class Game {
     for (let i = 0; i < 42; i++) {
       let x, z, dir;
       if (i < 28) {
-        // Four lanes on each of the seven closest N/S and E/W avenues.
+        // Two lanes per direction on the seven closest N/S and E/W avenues.
         const grid = (Math.floor(i / 4) - 3) * 200;
         const along = ((i % 4) - 1.5) * 260 - 28;
         const vertical = i % 2 === 0;
-        const lane = (i % 4 < 2) ? -8 : -48;
-        if (vertical) { x = grid + lane; z = along; dir = lane === -8 ? 0 : Math.PI; }
-        else { x = along; z = grid + lane; dir = lane === -8 ? Math.PI / 2 : -Math.PI / 2; }
+        const forward = i % 4 < 2;
+        if (vertical) {
+          dir = forward ? 0 : Math.PI;
+          x = grid + City.laneOffset(dir); z = along;
+        } else {
+          dir = forward ? Math.PI / 2 : -Math.PI / 2;
+          x = along; z = grid + City.laneOffset(dir);
+        }
       }
       this.vehicles.push(this.createVehicle(x, z, dir));
     }
@@ -115,6 +120,7 @@ export class Game {
     // Game state
     this.wanted = 0;
     this.wantedTimer = 0;
+    this.crashCooldown = 0;
     this.cash = 12450;
     this.keys = {};
     this.prevF = false;
@@ -151,7 +157,7 @@ export class Game {
     const span = near ? 3 : 10;
     const grid = (((Math.random() * (span * 2 + 1)) | 0) - span) * 200;
     const along = (Math.random() - 0.5) * (near ? 1100 : 2000);
-    const side = Math.random() > 0.5 ? 12 : 22; // clear of both road and buildings
+    const side = City.sidewalkOffset(dir); // outside pavement strip, clear of cars
     p.mesh.position.set(alongZ ? grid + side : along, 0, alongZ ? along : grid + side);
     p.mesh.rotation.set(0, dir, 0);
     p.routeDir = dir;
@@ -195,6 +201,7 @@ export class Game {
 
   update(dt) {
     dt = Math.min(dt, 0.05);
+    this.crashCooldown = Math.max(0, this.crashCooldown - dt);
 
     // ---- Input: F enter/exit, R repair ----
     const f = !!this.keys['f'];
@@ -217,7 +224,8 @@ export class Game {
 
     // ---- Player + collision ----
     this.player.update(dt, this.yaw, this.keys);
-    if (this.player.collisionThisFrame) {
+    if (this.player.collisionThisFrame && this.crashCooldown <= 0) {
+      this.crashCooldown = 1.2;
       this.shake = Math.min(2.8, 0.6 + this.player.collisionSpeed * 0.09);
       this.flashHit();
       this.notify('CRASH!  -$150', 'pink');
@@ -226,9 +234,6 @@ export class Game {
 
     // ---- AI traffic: lanes, intersection turns and spacing ----
     const DIRS = [0, Math.PI / 2, Math.PI, -Math.PI / 2];
-    const LANES = [-8, -48]; // the avenue surface runs from gridLine-56 to gridLine
-    const nearestLane = value => LANES.reduce((a, b) =>
-      Math.abs(value - b) < Math.abs(value - a) ? b : a);
     const time = performance.now() / 1000;
     this.city.updateTrafficLights(time);
 
@@ -239,10 +244,7 @@ export class Game {
 
       if (u.aiDir === undefined) {
         u.aiDir = DIRS[Math.round(v.rotation.y / (Math.PI / 2)) & 3];
-        const alongZ = Math.abs(Math.sin(u.aiDir)) < 0.5;
-        const line = alongZ ? Math.round(v.position.x / 200) * 200 : Math.round(v.position.z / 200) * 200;
-        const offset = alongZ ? v.position.x - line : v.position.z - line;
-        u.aiLane = nearestLane(offset);
+        u.aiLane = City.laneOffset(u.aiDir);
         u.aiSpeed = 12 + Math.random() * 10;
         u.cruise = 11 + Math.random() * 13;
         u.lastCross = null;
@@ -250,7 +252,7 @@ export class Game {
 
       const alongZ = Math.abs(Math.sin(u.aiDir)) < 0.5;
       const line = alongZ ? Math.round(v.position.x / 200) * 200 : Math.round(v.position.z / 200) * 200;
-      const lane = u.aiLane !== undefined ? u.aiLane : -8;
+      const lane = u.aiLane !== undefined ? u.aiLane : City.laneOffset(u.aiDir);
 
       // Ease back onto the lane centre after a turn or a collision
       if (alongZ) v.position.x += (line + lane - v.position.x) * Math.min(1, dt * 3);
@@ -265,7 +267,7 @@ export class Game {
         const ahead = dx * fx + dz * fz;
         const lateral = Math.abs(dx * fz - dz * fx);
         if (ahead > 0 && ahead < 90 && lateral < 24) {
-          targetSpeed = Math.min(targetSpeed, (other.userData.aiSpeed || 12) * 0.72);
+          targetSpeed = Math.min(targetSpeed, (other.userData.aiSpeed ?? 12) * 0.72);
         }
       }
 
@@ -280,12 +282,14 @@ export class Game {
 
       u.aiSpeed += (targetSpeed - u.aiSpeed) * Math.min(1, dt * 2.2);
       u.aiSpeed = THREE.MathUtils.clamp(u.aiSpeed, 0, 30);
+      u.frameSpeed = u.aiSpeed;
+      (v.userData.wheels || []).forEach(w => { w.rotation.z += u.aiSpeed * dt * 0.11; });
 
       const nx = v.position.x + fx * u.aiSpeed * dt;
       const nz = v.position.z + fz * u.aiSpeed * dt;
       const res = this.city.resolveCircle(nx, nz, 26);
       if (res.hit) {
-        u.aiLane = nearestLane(alongZ ? v.position.x - line : v.position.z - line);
+        u.aiLane = City.laneOffset(u.aiDir);
         u.aiSpeed *= 0.35;
         u.lastCross = null;
       }
@@ -303,7 +307,7 @@ export class Game {
         });
         if (Math.random() < 0.3) choices = choices.concat(u.aiDir); // sometimes go straight
         u.aiDir = choices[(Math.random() * choices.length) | 0] || u.aiDir;
-        u.aiLane = nearestLane(-8 + (Math.random() > 0.5 ? 0 : -40));
+        u.aiLane = City.laneOffset(u.aiDir);
         const xLine = Math.round(v.position.x / 200) * 200;
         const zLine = Math.round(v.position.z / 200) * 200;
         if (Math.abs(Math.sin(u.aiDir)) < 0.5) {
@@ -322,7 +326,8 @@ export class Game {
           const push = (70 - d) / d;
           pv.position.x += (pv.position.x - v.position.x) * push * 0.5;
           pv.position.z += (pv.position.z - v.position.z) * push * 0.5;
-          if (Math.abs(this.player.speed) > 12) {
+          if (Math.abs(this.player.speed) > 12 && this.crashCooldown <= 0) {
+            this.crashCooldown = 1.2;
             this.shake = Math.min(3, 1 + Math.abs(this.player.speed) * 0.06);
             this.player.damage(Math.abs(this.player.speed) * 0.4);
             this.addWanted(1);
@@ -337,7 +342,7 @@ export class Game {
         const spot = this.city.roadSpawn();
         v.position.set(spot.x, 15, spot.z);
         u.aiDir = spot.dir;
-        u.aiLane = nearestLane(spot.x - Math.round(spot.x / 200) * 200);
+        u.aiLane = City.laneOffset(spot.dir);
         u.lastCross = null;
       }
     });
@@ -386,7 +391,7 @@ export class Game {
       const line = alongZ
         ? Math.round(p.mesh.position.x / 200) * 200
         : Math.round(p.mesh.position.z / 200) * 200;
-      const lane = line + (p.laneSide || 12);
+      const lane = line + (p.laneSide ?? City.sidewalkOffset(dir));
       if (alongZ) p.mesh.position.x += (lane - p.mesh.position.x) * Math.min(1, dt * 3);
       else p.mesh.position.z += (lane - p.mesh.position.z) * Math.min(1, dt * 3);
 
@@ -428,14 +433,14 @@ export class Game {
       if (Math.abs(travel - crossCenter) < 10 && p.lastCross !== crossCenter) {
         p.lastCross = crossCenter;
         if (Math.random() < 0.35) {
-          p.laneSide = Math.random() > 0.5 ? 12 : 22;
+          if (alongZ) p.routeDir = Math.random() > 0.5 ? Math.PI / 2 : -Math.PI / 2;
+          else p.routeDir = Math.random() > 0.5 ? 0 : Math.PI;
+          p.laneSide = City.sidewalkOffset(p.routeDir);
           if (alongZ) {
-            p.routeDir = Math.random() > 0.5 ? Math.PI / 2 : -Math.PI / 2;
             p.mesh.position.set(
               crossCenter + Math.sin(p.routeDir) * 10, 0, nextLine + p.laneSide
             );
           } else {
-            p.routeDir = Math.random() > 0.5 ? 0 : Math.PI;
             p.mesh.position.set(
               nextLine + p.laneSide, 0, crossCenter + Math.cos(p.routeDir) * 10
             );

@@ -67,6 +67,19 @@ function sidewalkTexture() {
 }
 
 export class City {
+  /** Right-hand traffic lane offset from a grid line for a given heading. */
+  static laneOffset(dir) {
+    const d = ((dir % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
+    if (d < Math.PI / 4 || d >= Math.PI * 7 / 4) return -12; // +Z
+    if (d < Math.PI * 5 / 4) return 12;                       // +X / -Z
+    return -12;                                               // -X
+  }
+
+  /** Walkers keep to the outside pavement strip, clear of cars and buildings. */
+  static sidewalkOffset(dir) {
+    return Math.sign(City.laneOffset(dir)) * 31;
+  }
+
   constructor() {
     this.buildings = [];
     this.roads = [];
@@ -817,11 +830,13 @@ export class City {
       const i = (Math.random() * 20 | 0) - 10;
       const j = (Math.random() * 20 | 0) - 10;
       const along = (Math.random() - 0.5) * 150;
-      const lane = Math.random() > 0.5 ? 8 : -8;
+      const dirs = [0, Math.PI / 2, Math.PI, -Math.PI / 2];
+      const dir = dirs[(Math.random() * dirs.length) | 0];
+      const lane = City.laneOffset(dir);
       // Roads run along grid lines at multiples of blockSize (200)
-      const p = Math.random() > 0.5
-        ? tryPoint(i * 200 + lane, j * 200 + along, 0)
-        : tryPoint(i * 200 + along, j * 200 + lane, Math.PI / 2);
+      const p = Math.abs(Math.sin(dir)) < 0.5
+        ? tryPoint(i * 200 + lane, j * 200 + along, dir)
+        : tryPoint(i * 200 + along, j * 200 + lane, dir);
       if (p) return p;
     }
     return { x: 0, z: 0, dir: 0 };

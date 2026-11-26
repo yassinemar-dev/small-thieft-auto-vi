@@ -9,7 +9,7 @@ export class Player {
     this.armor = 100;
     this.speed = 0;
     this.maxSpeed = 78;
-    this.acceleration = 58;
+    this.acceleration = 90;
     this.turnSpeed = 2.5;
     this.friction = 1.15;
     this.rotation = 0;
@@ -38,7 +38,7 @@ export class Player {
   setGame(g) { this.game = g; }
 
   tryEnterVehicle(vehicles) {
-    let best = null, bestDist = 85;
+    let best = null, bestDist = 55;
     for (const v of vehicles) {
       const d = Math.hypot(this.position.x - v.position.x, this.position.z - v.position.z);
       if (d < bestDist) { bestDist = d; best = v; }
@@ -46,6 +46,7 @@ export class Player {
     if (best) {
       this.inVehicle = true;
       this.currentVehicle = best;
+      this.speed = best.userData.aiSpeed ?? 0; // don't freeze a moving AI car
       this.rotation = best.rotation.y;
       this.character.visible = false;
       this.shadow.visible = false;
@@ -57,8 +58,8 @@ export class Player {
   exitVehicle() {
     if (!this.inVehicle) return;
     const v = this.currentVehicle;
-    // Step out to the vehicle's right side (local +Z after shell rotation)
-    const side = new THREE.Vector3(-Math.sin(v.rotation.y), 0, -Math.cos(v.rotation.y)).multiplyScalar(88);
+    // Step out beside the car, not into its rear bumper
+    const side = new THREE.Vector3(Math.cos(v.rotation.y), 0, -Math.sin(v.rotation.y)).multiplyScalar(30);
     this.position.set(v.position.x + side.x, 0, v.position.z + side.z);
     const res = this.game.city.resolveCircle(this.position.x, this.position.z, this.radius);
     this.position.x = res.x; this.position.z = res.z;
@@ -102,15 +103,18 @@ export class Player {
       this.speed -= this.speed * (handbrake ? 3.2 : this.friction) * dt;
       this.speed = THREE.MathUtils.clamp(this.speed, -24, this.maxSpeed);
 
-      // Speed-sensitive steering: stable at speed, responsive when moving
+      // Speed-sensitive steering: no tank-like rotation while parked
       const speedFactor = Math.min(1, Math.abs(this.speed) / 14);
-      const steerRate = this.turnSpeed * (0.25 + 0.75 * speedFactor) * (handbrake ? 1.5 : 1);
-      v.rotation.y -= steer * steerRate * dt * (this.speed >= 0 ? 1 : -1);
+      const steerRate = this.turnSpeed * speedFactor * (handbrake ? 1.5 : 1);
+      if (Math.abs(this.speed) > 1) {
+        v.rotation.y -= steer * steerRate * dt * (this.speed >= 0 ? 1 : -1);
+      }
 
       // Body roll into corners
       if (v.userData.shell) {
         v.userData.shell.rotation.z = THREE.MathUtils.lerp(
-          v.userData.shell.rotation.z, -steer * speedFactor * 0.055, Math.min(1, dt * 6)
+          v.userData.shell.rotation.z, Math.abs(this.speed) > 1 ? -steer * speedFactor * 0.055 : 0,
+          Math.min(1, dt * 6)
         );
       }
 
