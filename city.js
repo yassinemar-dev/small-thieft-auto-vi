@@ -67,18 +67,16 @@ function sidewalkTexture() {
 }
 
 export class City {
-  /** Right-hand traffic lane offset from a grid line for a given heading. */
+  /** Lane offset from a grid line. Both directions stay inside the road corridor. */
   static laneOffset(dir) {
     const d = ((dir % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
-    if (d < Math.PI / 4 || d >= Math.PI * 7 / 4) return -14; // +Z
-    if (d < Math.PI * 5 / 4) return 14;                      // +X / -Z
+    if (d < Math.PI / 4 || d >= Math.PI * 7 / 4) return -14; // +Z / -X
+    if (d < Math.PI * 5 / 4) return -42;                     // +X / -Z
     return -14;                                              // -X
   }
 
-  /** Walkers keep to the outside pavement strip, clear of cars and buildings. */
-  static sidewalkOffset(dir) {
-    return Math.sign(City.laneOffset(dir)) * 31;
-  }
+  /** Walkers use the pavement strip on the building side of the grid line. */
+  static sidewalkOffset() { return 14; }
 
   constructor() {
     this.buildings = [];
