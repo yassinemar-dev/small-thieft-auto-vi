@@ -11,7 +11,7 @@ const canvas = document.getElementById('game-canvas');
 // ---- Scene: Vice City sunset ----
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0xff7a9c);
-scene.fog = new THREE.FogExp2(0xd98aa0, 0.00055);
+scene.fog = new THREE.FogExp2(0xe99087, 0.00042);
 
 // Gradient sky dome
 const skyGeo = new THREE.SphereGeometry(3500, 32, 20);
@@ -23,8 +23,8 @@ const pos = skyGeo.attributes.position;
 for (let i = 0; i < pos.count; i++) {
   const y = pos.getY(i) / 3500;
   const c = new THREE.Color();
-  if (y > 0.15) c.copy(mid).lerp(top, Math.min(1, (y - 0.15) / 0.85));
-  else c.copy(low).lerp(mid, Math.max(0, (y + 0.15) / 0.3));
+  if (y > 0.25) c.copy(mid).lerp(top, Math.min(1, (y - 0.25) / 0.75));
+  else c.copy(low).lerp(mid, Math.max(0, (y + 0.25) / 0.5));
   skyColors.push(c.r, c.g, c.b);
 }
 skyGeo.setAttribute('color', new THREE.Float32BufferAttribute(skyColors, 3));
@@ -75,7 +75,7 @@ for (let i = 0; i < 14; i++) {
 
 // ---- Sun + lens flare ----
 const sun = new THREE.Mesh(
-  new THREE.SphereGeometry(120, 24, 24),
+  new THREE.SphereGeometry(70, 24, 24),
   new THREE.MeshBasicMaterial({ color: 0xffe6b8, fog: false, toneMapped: false })
 );
 scene.add(sun);
@@ -123,20 +123,18 @@ const texRing = flareTexture('ring');
 const texStreak = flareTexture('streak');
 
 const lensflare = new Lensflare();
-lensflare.addElement(new LensflareElement(texGlow, 620, 0, new THREE.Color(0xffd9a8)));
-lensflare.addElement(new LensflareElement(texStreak, 480, 0.06, new THREE.Color(0xffa878)));
-lensflare.addElement(new LensflareElement(texGlow, 130, 0.24, new THREE.Color(0xfff0d8)));
-lensflare.addElement(new LensflareElement(texRing, 280, 0.42, new THREE.Color(0xff9ac0)));
-lensflare.addElement(new LensflareElement(texGlow, 200, 0.62, new THREE.Color(0xffcf80)));
-lensflare.addElement(new LensflareElement(texStreak, 540, 0.86, new THREE.Color(0xff7048)));
+lensflare.addElement(new LensflareElement(texGlow, 320, 0, new THREE.Color(0xffd9a8)));
+lensflare.addElement(new LensflareElement(texStreak, 250, 0.06, new THREE.Color(0xffa878)));
+lensflare.addElement(new LensflareElement(texRing, 150, 0.42, new THREE.Color(0xff9ac0)));
+lensflare.addElement(new LensflareElement(texGlow, 120, 0.62, new THREE.Color(0xffcf80)));
 sun.add(lensflare);
 
 // ---- Lighting ----
-scene.add(new THREE.HemisphereLight(0xffc0d0, 0x2a3a2a, 1.0));
-scene.add(new THREE.AmbientLight(0xffffff, 0.45));
+scene.add(new THREE.HemisphereLight(0xffc2b8, 0x33405a, 0.7));
+scene.add(new THREE.AmbientLight(0xffffff, 0.2));
 
-const dirLight = new THREE.DirectionalLight(0xffd0b0, 2.1);
-dirLight.position.set(-300, 260, -400);
+const dirLight = new THREE.DirectionalLight(0xffd0b0, 2.5);
+dirLight.position.set(-280, 160, -400);
 dirLight.castShadow = true;
 dirLight.shadow.mapSize.set(2048, 2048);
 dirLight.shadow.camera.near = 1;
@@ -145,10 +143,11 @@ dirLight.shadow.camera.left = -260;
 dirLight.shadow.camera.right = 260;
 dirLight.shadow.camera.top = 260;
 dirLight.shadow.camera.bottom = -260;
-dirLight.shadow.bias = -0.0005;
+dirLight.shadow.bias = -0.0001;
+dirLight.shadow.normalBias = 0.8;
 scene.add(dirLight, dirLight.target);
 
-const fill = new THREE.DirectionalLight(0x7fb0ff, 0.6);
+const fill = new THREE.DirectionalLight(0x7fb0ff, 0.3);
 fill.position.set(200, 120, 300);
 scene.add(fill);
 
@@ -162,12 +161,12 @@ renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.15;
+renderer.toneMappingExposure = 1.05;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 
 const composer = new EffectComposer(renderer);
 composer.addPass(new RenderPass(scene, camera));
-const afterimage = new AfterimagePass(0.55);
+const afterimage = new AfterimagePass(0.12);
 composer.addPass(afterimage);
 composer.addPass(new OutputPass());
 
@@ -211,7 +210,7 @@ document.addEventListener('mousemove', (e) => {
 // ---- Loop ----
 let lastTime = 0;
 function gameLoop(timestamp) {
-  const dt = lastTime ? (timestamp - lastTime) / 1000 : 0;
+  const dt = Math.min(lastTime ? (timestamp - lastTime) / 1000 : 0, 0.05);
   lastTime = timestamp;
 
   game.update(dt);
@@ -224,8 +223,8 @@ function gameLoop(timestamp) {
   // Speed-sensitive motion blur + subtle FOV kick
   const speedRatio = Math.min(1, Math.abs(game.player.speed) / game.player.maxSpeed);
   afterimage.uniforms['damp'].value = game.player.inVehicle
-    ? 0.5 + speedRatio * 0.36
-    : 0.45 + Math.min(0.22, Math.abs(game.player.speed) / 54 * 0.22);
+    ? 0.12 + speedRatio * 0.42
+    : 0.1 + Math.min(0.24, Math.abs(game.player.speed) / 54 * 0.24);
   const targetFov = 62 + (game.player.inVehicle ? speedRatio * 11 : 0);
   camera.fov += (targetFov - camera.fov) * Math.min(1, dt * 4);
   camera.updateProjectionMatrix();

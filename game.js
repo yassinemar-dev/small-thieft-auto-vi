@@ -686,7 +686,8 @@ export class Game {
   draw() {
     const dirLight = this.scene.children.find(c => c.isDirectionalLight);
     if (dirLight) {
-      dirLight.position.set(this.player.position.x + 80, 140, this.player.position.z + 60);
+      // Match the visible sun: low sunset light from -X/-Z, with long raking shadows
+      dirLight.position.set(this.player.position.x - 280, 160, this.player.position.z - 400);
       dirLight.target.position.copy(this.player.position);
       dirLight.target.updateMatrixWorld();
     }
