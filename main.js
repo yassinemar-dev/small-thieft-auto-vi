@@ -208,18 +208,21 @@ const grade = new ShaderPass(GradeShader);
 composer.addPass(grade);
 composer.addPass(new OutputPass());
 
-window.__renderer = renderer;
-window.__composer = composer;
+if (import.meta.env.DEV) {
+  window.__renderer = renderer;
+  window.__composer = composer;
+}
 
 // ---- Game ----
 const game = new Game(scene, camera);
-window.__game = game;
-window.__scene = scene;
-window.__camera = camera;
-
 const audio = new GameAudio();
 game.audio = audio;
-window.__audio = audio;
+if (import.meta.env.DEV) {
+  window.__game = game;
+  window.__scene = scene;
+  window.__camera = camera;
+  window.__audio = audio;
+}
 window.addEventListener('pointerdown', () => audio.init(), { passive: true });
 window.addEventListener('keydown', () => audio.init());
 

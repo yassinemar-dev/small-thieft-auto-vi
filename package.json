@@ -1,7 +1,7 @@
 {
-  "name": "gta6-web",
-  "version": "2.0.0",
-  "description": "GTA 6 Web Version - 3D browser game built with Three.js",
+  "name": "small-thief-auto-vi",
+  "version": "3.0.0",
+  "description": "Small Thief Auto VI — a GTA VI-inspired Vice City web game built with Three.js",
   "type": "module",
   "scripts": {
     "dev": "vite",

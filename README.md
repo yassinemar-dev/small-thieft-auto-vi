@@ -1,6 +1,6 @@
 # Small Thief Auto VI
 
-A browser-based, GTA VI-inspired 3D open-world game built with Three.js and Vite.
+A browser-based, GTA VI-inspired 3D Vice City game built with Three.js and Vite. Drive, explore, cause trouble, outrun the police and run checkpoint routes — all rendered in real 3D with a GTA-style HUD.
 
 ## Run locally
 
@@ -9,28 +9,30 @@ npm install
 npm run dev
 ```
 
-Then open http://localhost:5173/
+Open <http://localhost:5173/>. Use `npm run build` for a production bundle.
 
 ## Controls
 
 | Key | Action |
 | --- | --- |
-| `W A S D` / Arrows | Move / drive / steer |
+| `W A S D` / Arrows | Move, drive and steer |
 | `F` | Enter or exit the nearest vehicle |
-| `R` | Repair and restore health/armor |
+| `R` | Repair damage and restore health/armor |
 | `Shift` | Run |
 | `Space` | Handbrake while driving |
-| Mouse | Orbit camera (click the canvas to lock the pointer) |
+| `M` | Start a new Vice Run checkpoint mission |
+| `Esc` / `P` | Pause menu (resume or restart) |
+| Mouse | Look around (click the canvas to lock the pointer) |
 
 ## Features
 
-- Instanced pedestrian crowd: 64 animated walkers rendered in 10 draw calls
-- Instanced traffic fleet: 43 cars rendered in 22 draw calls with per-car paint, wheel spin and body roll
-- Third-person camera with obstacle avoidance, shake and over-the-shoulder framing
-- Detailed articulated player character with walk/run and seated driving animation
-- Drivable vehicles with steering, acceleration, handbrake and collisions
-- Lane-following AI traffic (42 cars) with intersection turns, spacing and traffic lights
-- Sidewalk pedestrians (64 walkers) moving in both directions, turning at corners and dodging cars
-- Wider avenues, open parks, shop awnings/neon signs, street bins, textured roads/sidewalks, zebra crossings, art-deco bands, rooftop props, palms and streetlights
-- Vice City sunset sky with drifting clouds, distant hills, lens flare and speed-sensitive motion blur
-- GTA VI-style HUD: circular minimap, wanted stars, health/armor bars and speedometer
+- **Vice Run missions** — five glowing checkpoints, per-checkpoint cash, a decaying time bonus and automatic restart after completion.
+- **Wanted system** — crashes and pedestrian hits raise up to five stars; nearby traffic turns into pursuing police cruisers with flashing red/blue lightbars and ramming AI.
+- **Death and respawn** — a `WASTED` screen, hospital bill, cleared wanted level and respawn near the starter car.
+- **Driving model** — acceleration, reverse, speed-sensitive steering, handbrake, body roll, wheel spin, collisions, brake lights, damage tint and engine smoke.
+- **Living city** — 43 lane-following AI cars with intersection turns and traffic lights, 64 sidewalk pedestrians who dodge cars and panic-run from fast vehicles or police.
+- **Performance-conscious rendering** — instanced cars and pedestrians, instanced props/decals, MSAA, half-float post-processing, subtle film grade and speed-sensitive motion blur.
+- **Atmosphere** — sunset sky, drifting clouds, lens flare, fog, palms, parks, awnings, neon shop signs, streetlight glow, rooftop props and zebra crossings.
+- **HUD** — rotating minimap with an honest compass, wanted stars, cash, district label, health/armor bars, speedometer, mission panel, notifications and damage flashes.
+- **Audio** — synthesized engine note, police siren, crashes, impacts, checkpoints, mission completion and wanted alerts; no external sound files.
+- **Pause menu** — freezes the simulation and offers resume or a clean full restart.
