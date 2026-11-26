@@ -350,6 +350,27 @@ export function createPedestrian() {
     g.add(leg); legs.push(leg);
   });
 
+  // Small street-life accessories — cheap, but they break up the crowd
+  if (Math.random() > 0.55) {
+    const shades = new THREE.Mesh(
+      new THREE.BoxGeometry(10, 1.5, 1),
+      new THREE.MeshStandardMaterial({ color: 0x141820, roughness: 0.35, metalness: 0.2 })
+    );
+    shades.position.set(0, 33, 4.6);
+    g.add(shades);
+  }
+  if (Math.random() > 0.6) {
+    const bag = new THREE.Mesh(
+      new THREE.BoxGeometry(6, 9, 3),
+      new THREE.MeshStandardMaterial({
+        color: [0xf97316, 0x34d399, 0xe2e8f0][(Math.random() * 3) | 0], roughness: 0.9
+      })
+    );
+    bag.position.set(8, 14, 2.5);
+    bag.castShadow = true;
+    g.add(bag);
+  }
+
   g.userData = { arms, legs, phase: Math.random() * Math.PI * 2 };
   return g;
 }

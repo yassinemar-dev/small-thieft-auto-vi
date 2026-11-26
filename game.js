@@ -67,11 +67,11 @@ export class Game {
     // Vehicles — start with a visible flow of traffic around the spawn point,
     // then fill the rest of the city. All spawns are on clear road lanes.
     this.vehicles = [];
-    for (let i = 0; i < 34; i++) {
+    for (let i = 0; i < 42; i++) {
       let x, z, dir;
-      if (i < 20) {
-        // Four lanes on each of the five closest N/S and E/W avenues.
-        const grid = (Math.floor(i / 4) - 2) * 200;
+      if (i < 28) {
+        // Four lanes on each of the seven closest N/S and E/W avenues.
+        const grid = (Math.floor(i / 4) - 3) * 200;
         const along = ((i % 4) - 1.5) * 260 - 28;
         const vertical = i % 2 === 0;
         const lane = (i % 4 < 2) ? -8 : -48;
@@ -86,9 +86,13 @@ export class Game {
     starter.userData.stationary = true; // wait at the spawn point for the player
     this.vehicles.push(starter);
 
-    // Pedestrians
+    // Pedestrians — most start close to the player so the sidewalks feel alive
     this.pedestrians = [];
-    for (let i = 0; i < 44; i++) this.pedestrians.push(this.createPedestrian());
+    for (let i = 0; i < 64; i++) {
+      const ped = this.createPedestrian();
+      this.placePedestrian(ped, i < 46);
+      this.pedestrians.push(ped);
+    }
 
     // Player
     this.player = new Player(scene);
@@ -133,16 +137,30 @@ export class Game {
 
   createPedestrian() {
     const mesh = createPedestrian();
-    mesh.position.set((Math.random() - 0.5) * 1800, 0, (Math.random() - 0.5) * 1800);
-    const ped = {
-      mesh,
-      vx: (Math.random() - 0.5) * 9,
-      vz: (Math.random() - 0.5) * 9,
-      alive: true,
-      knocked: 0
-    };
+    const ped = { mesh, vx: 0, vz: 0, alive: true, knocked: 0 };
     this.scene.add(mesh);
     return ped;
+  }
+
+  /** Put a walker on a sidewalk lane, facing a steady direction. */
+  placePedestrian(p, near = false) {
+    const dirs = [0, Math.PI / 2, Math.PI, -Math.PI / 2];
+    const dir = dirs[(Math.random() * dirs.length) | 0];
+    const alongZ = Math.abs(Math.sin(dir)) < 0.5;
+    const span = near ? 3 : 10;
+    const grid = (((Math.random() * (span * 2 + 1)) | 0) - span) * 200;
+    const along = (Math.random() - 0.5) * (near ? 1100 : 2000);
+    const side = Math.random() > 0.5 ? 12 : 22; // clear of both road and buildings
+    p.mesh.position.set(alongZ ? grid + side : along, 0, alongZ ? along : grid + side);
+    p.mesh.rotation.set(0, dir, 0);
+    p.routeDir = dir;
+    p.laneSide = side;
+    p.routeSpeed = 4 + Math.random() * 4;
+    p.lastCross = null;
+    p.vx = Math.sin(dir) * p.routeSpeed;
+    p.vz = Math.cos(dir) * p.routeSpeed;
+    p.alive = true;
+    p.knocked = 0;
   }
 
   setLook(yaw, pitch) { this.yaw = yaw; this.pitch = pitch; }
@@ -355,35 +373,77 @@ export class Game {
         p.mesh.rotation.z = Math.min(Math.PI / 2, p.mesh.rotation.z + dt * 4);
         p.mesh.position.y = Math.max(-4, p.mesh.position.y - dt * 18);
         if (p.knocked <= 0) {
-          p.alive = true;
           p.mesh.rotation.z = 0;
-          p.mesh.position.set((Math.random() - 0.5) * 1200, 0, (Math.random() - 0.5) * 1200);
+          this.placePedestrian(p, Math.random() > 0.35);
         }
         return;
       }
 
-      // Bots actually react to traffic now — step aside when a car is close
+      // Walkers keep to a sidewalk lane instead of wandering through walls
+      const dir = p.routeDir !== undefined ? p.routeDir : Math.atan2(p.vx, p.vz);
+      const alongZ = Math.abs(Math.sin(dir)) < 0.5;
+      const line = alongZ
+        ? Math.round(p.mesh.position.x / 200) * 200
+        : Math.round(p.mesh.position.z / 200) * 200;
+      const lane = line + (p.laneSide || 12);
+      if (alongZ) p.mesh.position.x += (lane - p.mesh.position.x) * Math.min(1, dt * 3);
+      else p.mesh.position.z += (lane - p.mesh.position.z) * Math.min(1, dt * 3);
+
+      // Desired pace along the sidewalk, with a gentle dodge for nearby cars
+      let ax = Math.sin(dir) * p.routeSpeed;
+      let az = Math.cos(dir) * p.routeSpeed;
       for (const car of this.vehicles) {
         const dx = p.mesh.position.x - car.position.x;
         const dz = p.mesh.position.z - car.position.z;
         const d = Math.hypot(dx, dz);
-        if (d < 60 && d > 0.01) {
-          p.vx += (dx / d) * (60 - d) * 0.4 * dt;
-          p.vz += (dz / d) * (60 - d) * 0.4 * dt;
+        if (d < 45 && d > 0.01) {
+          ax += (dx / d) * (45 - d) * 0.28;
+          az += (dz / d) * (45 - d) * 0.28;
         }
       }
-
-      p.vx += (Math.random() - 0.5) * 6 * dt;
-      p.vz += (Math.random() - 0.5) * 6 * dt;
+      ax += (Math.random() - 0.5) * 2;
+      az += (Math.random() - 0.5) * 2;
+      p.vx += (ax - p.vx) * Math.min(1, dt * 5);
+      p.vz += (az - p.vz) * Math.min(1, dt * 5);
       const sp = Math.hypot(p.vx, p.vz);
-      if (sp > 9) { p.vx *= 9 / sp; p.vz *= 9 / sp; }
+      const maxSp = p.routeSpeed * 1.8;
+      if (sp > maxSp) { p.vx *= maxSp / sp; p.vz *= maxSp / sp; }
 
       const res = this.city.resolveCircle(p.mesh.position.x + p.vx * dt, p.mesh.position.z + p.vz * dt, 5);
-      if (res.hit) { p.vx *= -1; p.vz *= -1; }
+      if (res.hit) {
+        p.routeDir = dir + Math.PI;
+        p.vx *= -1; p.vz *= -1;
+        p.lastCross = null;
+      }
       p.mesh.position.x = res.x;
       p.mesh.position.z = res.z;
       p.mesh.rotation.y = Math.atan2(p.vx, p.vz);
-      animatePedestrian(p.mesh, sp, dt);
+      animatePedestrian(p.mesh, Math.hypot(p.vx, p.vz), dt);
+
+      // At the next corner some walkers turn down the cross street
+      const travel = alongZ ? p.mesh.position.z : p.mesh.position.x;
+      const nextLine = Math.round((travel + 28) / 200) * 200;
+      const crossCenter = nextLine - 28;
+      if (Math.abs(travel - crossCenter) < 10 && p.lastCross !== crossCenter) {
+        p.lastCross = crossCenter;
+        if (Math.random() < 0.35) {
+          p.laneSide = Math.random() > 0.5 ? 12 : 22;
+          if (alongZ) {
+            p.routeDir = Math.random() > 0.5 ? Math.PI / 2 : -Math.PI / 2;
+            p.mesh.position.set(
+              crossCenter + Math.sin(p.routeDir) * 10, 0, nextLine + p.laneSide
+            );
+          } else {
+            p.routeDir = Math.random() > 0.5 ? 0 : Math.PI;
+            p.mesh.position.set(
+              nextLine + p.laneSide, 0, crossCenter + Math.cos(p.routeDir) * 10
+            );
+          }
+          p.vx = Math.sin(p.routeDir) * p.routeSpeed;
+          p.vz = Math.cos(p.routeDir) * p.routeSpeed;
+          p.mesh.rotation.y = p.routeDir;
+        }
+      }
 
       const pv = this.player.currentVehicle;
       const px = pv ? pv.position.x : this.player.position.x;

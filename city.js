@@ -387,6 +387,86 @@ export class City {
       this.group.add(m);
     });
 
+    // ---- Ground-floor shop awnings, neon signs and sidewalk bins ----
+    const awningList = [], signList = [];
+    const SHOP_COLORS = [0xff4f81, 0x35c9ff, 0xffd23f, 0x34d399, 0xf97316, 0xffe9d0];
+    this.buildings.forEach(b => {
+      const bays = Math.max(2, Math.floor(b.width / 34));
+      for (let k = 0; k < bays; k++) {
+        if (Math.random() > 0.38) continue;
+        const x = bays === 1 ? b.x + b.width / 2 : b.x + 18 + k * (b.width - 36) / (bays - 1);
+        awningList.push({
+          x, y: 10.6, z: b.z + b.depth + 5.5, w: 22,
+          color: SHOP_COLORS[(Math.random() * SHOP_COLORS.length) | 0]
+        });
+        signList.push({
+          x, y: 16.5, z: b.z + b.depth + 0.9, w: 18,
+          color: SHOP_COLORS[(Math.random() * SHOP_COLORS.length) | 0]
+        });
+      }
+    });
+    if (awningList.length) {
+      const awningMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.85, side: THREE.DoubleSide });
+      const awningMesh = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), awningMat, awningList.length);
+      awningList.forEach((a, i) => {
+        dummy.position.set(a.x, a.y, a.z);
+        dummy.rotation.set(-0.18, 0, 0);
+        dummy.scale.set(a.w, 1.5, 12);
+        dummy.updateMatrix();
+        awningMesh.setMatrixAt(i, dummy.matrix);
+        awningMesh.setColorAt(i, new THREE.Color(a.color));
+      });
+      awningMesh.instanceMatrix.needsUpdate = true;
+      if (awningMesh.instanceColor) awningMesh.instanceColor.needsUpdate = true;
+      awningMesh.castShadow = true;
+      awningMesh.frustumCulled = false;
+      this.group.add(awningMesh);
+    }
+    if (signList.length) {
+      const signMat = new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: false });
+      const signMesh = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), signMat, signList.length);
+      signList.forEach((s, i) => {
+        dummy.position.set(s.x, s.y, s.z);
+        dummy.rotation.set(0, 0, 0);
+        dummy.scale.set(s.w, 4.5, 1);
+        dummy.updateMatrix();
+        signMesh.setMatrixAt(i, dummy.matrix);
+        signMesh.setColorAt(i, new THREE.Color(s.color));
+      });
+      signMesh.instanceMatrix.needsUpdate = true;
+      if (signMesh.instanceColor) signMesh.instanceColor.needsUpdate = true;
+      signMesh.frustumCulled = false;
+      this.group.add(signMesh);
+    }
+    const bins = [];
+    for (let i = -8; i <= 8; i++) {
+      for (let j = -8; j <= 8; j++) {
+        if (Math.random() > 0.55) continue;
+        bins.push({
+          x: i * 200 + 30 + Math.random() * 8,
+          z: j * 200 + 20 + Math.random() * 120,
+          c: Math.random() > 0.5 ? 0x35424a : 0x8c3b46
+        });
+      }
+    }
+    if (bins.length) {
+      const binMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.9 });
+      const binMesh = new THREE.InstancedMesh(new THREE.CylinderGeometry(1, 0.85, 1, 8), binMat, bins.length);
+      bins.forEach((b, i) => {
+        dummy.position.set(b.x, 3.6, b.z);
+        dummy.rotation.set(0, Math.random() * Math.PI, 0);
+        dummy.scale.set(3.2, 7.2, 3.2);
+        dummy.updateMatrix();
+        binMesh.setMatrixAt(i, dummy.matrix);
+        binMesh.setColorAt(i, new THREE.Color(b.c));
+      });
+      binMesh.instanceMatrix.needsUpdate = true;
+      if (binMesh.instanceColor) binMesh.instanceColor.needsUpdate = true;
+      binMesh.castShadow = true;
+      binMesh.frustumCulled = false;
+      this.group.add(binMesh);
+    }
+
     // ---- Palm trees + shrubs (Vice City signature greenery) ----
     const trunkMat = new THREE.MeshStandardMaterial({ color: 0x6b4f35, roughness: 1 });
     const leafMat = new THREE.MeshStandardMaterial({
