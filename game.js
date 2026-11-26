@@ -121,6 +121,8 @@ export class Game {
     this.wanted = 0;
     this.wantedTimer = 0;
     this.crashCooldown = 0;
+    this.deathActive = false;
+    this.deadTimer = 0;
     this.policeCars = [];
     this.cash = 12450;
     this.keys = {};
@@ -269,6 +271,15 @@ export class Game {
     dt = Math.min(dt, 0.05);
     this.crashCooldown = Math.max(0, this.crashCooldown - dt);
     this.syncPolice();
+
+    if (this.player.dead) {
+      if (!this.deathActive) this.beginDeath();
+      this.deadTimer += dt;
+      this.updateCamera(dt);
+      this.updateHUD(dt);
+      if (this.deadTimer >= 2.4) this.respawnPlayer();
+      return;
+    }
 
     // ---- Input: F enter/exit, R repair ----
     const f = !!this.keys['f'];
@@ -551,6 +562,50 @@ export class Game {
     // ---- HUD ----
     this.updateHUD(dt);
     this.drawMinimap();
+  }
+
+  /** Show the wasted screen and freeze gameplay until the hospital respawn. */
+  beginDeath() {
+    this.deathActive = true;
+    this.deadTimer = 0;
+    this.keys = {};
+    this.prevF = this.prevR = true;
+    this.player.speed = 0;
+    const el = document.getElementById('death-screen');
+    if (el) el.classList.add('show');
+    this.notify('WASTED', 'pink');
+  }
+
+  /** Respawn near the starter car, clear the heat and charge a hospital bill. */
+  respawnPlayer() {
+    const el = document.getElementById('death-screen');
+    if (el) el.classList.remove('show');
+    this.deathActive = false;
+    this.deadTimer = 0;
+
+    const p = this.player;
+    p.dead = false;
+    p.health = 100;
+    p.armor = 100;
+    p.speed = 0;
+    p.inVehicle = false;
+    p.currentVehicle = null;
+    p.character.visible = true;
+    p.shadow.visible = true;
+
+    const spot = this.city.roadSpawn(0, 0);
+    p.position.set(spot.x, 0, spot.z);
+    p.rotation = spot.dir;
+    p.character.position.copy(p.position);
+    p.shadow.position.set(p.position.x, 0.08, p.position.z);
+
+    this.wanted = 0;
+    this.wantedTimer = 0;
+    this.cash = Math.max(0, this.cash - 500);
+    this.crashCooldown = 2;
+    this.keys = {};
+    this.prevF = this.prevR = true;
+    this.notify('HOSPITAL BILL  -$500', 'pink');
   }
 
   flashHit() {

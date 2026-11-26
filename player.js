@@ -7,6 +7,7 @@ export class Player {
     this.position = new THREE.Vector3(0, 0, 0);
     this.health = 100;
     this.armor = 100;
+    this.dead = false;
     this.speed = 0;
     this.maxSpeed = 78;
     this.acceleration = 90;
@@ -72,23 +73,27 @@ export class Player {
   }
 
   damage(amount) {
+    if (this.dead) return;
     if (this.armor > 0) {
       const absorbed = Math.min(this.armor, amount * 0.7);
       this.armor -= absorbed;
       amount -= absorbed;
     }
     this.health = Math.max(0, this.health - amount);
+    if (this.health <= 0) this.dead = true;
   }
 
   repair() {
     this.health = 100;
     this.armor = 100;
+    this.dead = false;
     if (this.currentVehicle) {
       this.currentVehicle.userData.paint?.color.setHex(0x44ff88);
     }
   }
 
   update(dt, camYaw, keys) {
+    if (this.dead) return;
     this.collisionThisFrame = false;
     this.collisionSpeed = 0;
 
