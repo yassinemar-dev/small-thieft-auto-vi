@@ -17,6 +17,29 @@ const cylAt = (r, h, x, y, z, axis = 'y') => {
 };
 const merge = geos => mergeGeometries(geos, false);
 
+// Tiny equirectangular sky reflection shared by all car paints, glass and chrome.
+function carEnvMap() {
+  const cv = document.createElement('canvas');
+  cv.width = 512; cv.height = 256;
+  const c = cv.getContext('2d');
+  const g = c.createLinearGradient(0, 0, 0, 256);
+  g.addColorStop(0, '#0a1028');
+  g.addColorStop(0.42, '#425582');
+  g.addColorStop(0.52, '#ffb894');
+  g.addColorStop(0.63, '#5d4a5c');
+  g.addColorStop(1, '#0d0e14');
+  c.fillStyle = g; c.fillRect(0, 0, 512, 256);
+  const sun = c.createRadialGradient(360, 118, 0, 360, 118, 70);
+  sun.addColorStop(0, 'rgba(255,246,214,1)');
+  sun.addColorStop(0.25, 'rgba(255,190,130,0.55)');
+  sun.addColorStop(1, 'rgba(255,150,100,0)');
+  c.fillStyle = sun; c.fillRect(280, 38, 160, 160);
+  const tex = new THREE.CanvasTexture(cv);
+  tex.mapping = THREE.EquirectangularReflectionMapping;
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
 const tireMat = new THREE.MeshStandardMaterial({ color: 0x0e0e12, roughness: 0.95 });
 const rimMat = new THREE.MeshStandardMaterial({ color: 0xd8dee8, metalness: 0.95, roughness: 0.18 });
 const glassMat = new THREE.MeshStandardMaterial({
@@ -78,6 +101,13 @@ export class CarFleet {
       color: 0xffce32, emissive: 0xffa800, emissiveIntensity: 0.8, toneMapped: false
     });
     const creaseMat = new THREE.MeshStandardMaterial({ color: 0xffffff, transparent: true, opacity: 0.06 });
+
+    const env = carEnvMap();
+    paintMat.envMap = env; paintMat.envMapIntensity = 0.75;
+    glassMat.envMap = env; glassMat.envMapIntensity = 0.65;
+    chromeMat.envMap = env; chromeMat.envMapIntensity = 1.1;
+    rimMat.envMap = env; rimMat.envMapIntensity = 0.9;
+    trimMat.envMap = env; trimMat.envMapIntensity = 0.8;
 
     // Coordinates below are in the original model space: +X = nose, Y up, Z across.
     const wheelSpots = [[-27, -12], [-27, 12], [27, -12], [27, 12]];
@@ -286,6 +316,19 @@ export class CarFleet {
     this.shadowMesh.frustumCulled = false;
     scene.add(this.shadowMesh);
 
+    // Night-only volumetric headlight cones — one instanced draw call for the fleet.
+    const beamGeo = new THREE.ConeGeometry(16, 120, 10, 1, true);
+    beamGeo.rotateZ(Math.PI / 2);
+    beamGeo.translate(60, 0, 0);
+    this.beamMat = new THREE.MeshBasicMaterial({
+      color: 0xffe0a6, transparent: true, opacity: 0, depthWrite: false,
+      blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
+      toneMapped: false, fog: true
+    });
+    this.beamMesh = new THREE.InstancedMesh(beamGeo, this.beamMat, cars.length);
+    this.beamMesh.frustumCulled = false;
+    scene.add(this.beamMesh);
+
     this.sync();
   }
 
@@ -294,6 +337,7 @@ export class CarFleet {
     lightMat.emissiveIntensity = THREE.MathUtils.lerp(0.45, 2.8, f);
     tailMat.emissiveIntensity = THREE.MathUtils.lerp(0.6, 1.5, f);
     this.spillMat.opacity = THREE.MathUtils.lerp(0, 0.45, f);
+    this.beamMat.opacity = THREE.MathUtils.lerp(0, 0.12, f);
   }
 
   /** Push proxy transforms, paint, body roll and wheel spin to the GPU. */
@@ -376,6 +420,13 @@ export class CarFleet {
       this.local.updateMatrix();
       this.matrix.multiplyMatrices(car.matrix, this.shellMatrix).multiply(this.local.matrix);
       this.shadowMesh.setMatrixAt(i, this.matrix);
+
+      this.local.position.set(43, 5, 0);
+      this.local.rotation.set(0, 0, 0);
+      this.local.scale.set(1, 1, 1);
+      this.local.updateMatrix();
+      this.matrix.multiplyMatrices(car.matrix, this.shellMatrix).multiply(this.local.matrix);
+      this.beamMesh.setMatrixAt(i, this.matrix);
     });
     this.parts.forEach(part => {
       part.mesh.instanceMatrix.needsUpdate = true;
@@ -387,6 +438,7 @@ export class CarFleet {
     this.fireGeo.attributes.position.needsUpdate = true;
     this.spillMesh.instanceMatrix.needsUpdate = true;
     this.shadowMesh.instanceMatrix.needsUpdate = true;
+    this.beamMesh.instanceMatrix.needsUpdate = true;
   }
 }
 
