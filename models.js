@@ -68,6 +68,15 @@ export class CarFleet {
     const pillarMat = new THREE.MeshStandardMaterial({ color: 0x1a1a20, metalness: 0.4, roughness: 0.5 });
     const trimMat = new THREE.MeshStandardMaterial({ color: 0x8f9aa8, metalness: 0.85, roughness: 0.28 });
     const plateMat = new THREE.MeshStandardMaterial({ color: 0xf1d994, roughness: 0.7 });
+    const interiorMat = new THREE.MeshStandardMaterial({ color: 0x0d0d12, roughness: 0.95 });
+    const caliperMat = new THREE.MeshStandardMaterial({ color: 0xc8323d, roughness: 0.45, metalness: 0.35 });
+    const indicatorMat = new THREE.MeshStandardMaterial({
+      color: 0xffb43c, emissive: 0xff8a1e, emissiveIntensity: 0.7
+    });
+    const liveryMat = new THREE.MeshStandardMaterial({ color: 0xf2f4f8, roughness: 0.55 });
+    const taxiMat = new THREE.MeshStandardMaterial({
+      color: 0xffce32, emissive: 0xffa800, emissiveIntensity: 0.8, toneMapped: false
+    });
     const creaseMat = new THREE.MeshStandardMaterial({ color: 0xffffff, transparent: true, opacity: 0.06 });
 
     // Coordinates below are in the original model space: +X = nose, Y up, Z across.
@@ -97,6 +106,38 @@ export class CarFleet {
       cylAt(2.6, 6, -46, -3, -6, 'x'),
       cylAt(2.6, 6, -46, -3, 6, 'x')
     ]);
+    const interiorGeo = merge([
+      boxAt(38, 4, 18, 0, 18, 0),
+      boxAt(16, 3, 17, -8, 14, -6),
+      boxAt(16, 3, 17, -8, 14, 6),
+      boxAt(3, 16, 17, -16, 22, -6),
+      boxAt(3, 16, 17, -16, 22, 6),
+      (() => {
+        const g = new THREE.TorusGeometry(7, 1, 6, 12);
+        g.rotateY(Math.PI / 2);
+        g.translate(4, 23, 7);
+        return g;
+      })()
+    ]);
+    const wiperGeo = merge([
+      boxAt(1, 0.8, 18, 17.8, 18, 0),
+      boxAt(1, 0.8, 18, 17.8, 21, 0)
+    ]);
+    const caliperGeo = merge([-1, 1].flatMap(s => [
+      boxAt(4, 8, 2, -27, -6, s * 10),
+      boxAt(4, 8, 2, 27, -6, s * 10)
+    ]));
+    const indicatorGeo = merge([-1, 1].flatMap(s => [
+      boxAt(2, 2, 4, 42, 5, s * 13),
+      boxAt(2, 2, 4, -42, 5, s * 13)
+    ]));
+    const aeroGeo = merge([
+      boxAt(8, 1.5, 26, 46, -8, 0),
+      ...[-8, 0, 8].map(z => boxAt(8, 4, 1.5, -46, -7, z))
+    ]);
+    const liveryGeo = merge([-1, 1].map(s => boxAt(46, 10, 0.8, -4, 11, s * 13.4)));
+    const liveryStripeGeo = merge([-1, 1].map(s => boxAt(46, 3, 1, -4, 11, s * 14)));
+    const taxiGeo = boxAt(10, 5, 8, -4, 36, 0);
 
     const parts = [
       ['bodyLower', new RoundedBoxGeometry(86, 18.2, 26, 2, 3.4), [0, 3.9, 0], () => paintMat, null, true],
@@ -105,7 +146,9 @@ export class CarFleet {
       ['skirtB', new THREE.BoxGeometry(77.4, 4.68, 2), [0, -5.72, 12], () => darkMat],
       ['hood', new RoundedBoxGeometry(34, 0.8, 22, 2, 0.35), [25, 14, 0], () => creaseMat],
       ['cabin', new THREE.BoxGeometry(46, 18, 22), [-6, 23, 0], () => glassMat],
+      ['interior', interiorGeo, [0, 0, 0], () => interiorMat],
       ['wind', new THREE.BoxGeometry(2, 17, 20), [17, 23, 0], () => glassMat, null, false, -0.5],
+      ['wipers', wiperGeo, [0, 0, 0], () => darkMat],
       ['pillarA', new THREE.BoxGeometry(3, 18, 3), [-6, 23, -10], () => pillarMat],
       ['pillarB', new THREE.BoxGeometry(3, 18, 3), [-6, 23, 10], () => pillarMat],
       ['wheelFL', new THREE.CylinderGeometry(10, 10, 7, 20), [-27, -6, -12], () => tireMat, 'wheel'],
@@ -117,15 +160,18 @@ export class CarFleet {
       ['rimRL', new THREE.CylinderGeometry(5.5, 5.5, 7.4, 10), [27, -6, -12], () => rimMat, 'wheel'],
       ['rimRR', new THREE.CylinderGeometry(5.5, 5.5, 7.4, 10), [27, -6, 12], () => rimMat, 'wheel'],
       ['hubCaps', hubGeo, [0, 0, 0], () => chromeMat],
+      ['calipers', caliperGeo, [0, 0, 0], () => caliperMat],
       ['arches', archGeo, [0, 0, 0], () => archMat],
       ['headA', new RoundedBoxGeometry(2, 5.5, 7, 2, 1.1), [43, 4, -8], () => lightMat],
       ['headB', new RoundedBoxGeometry(2, 5.5, 7, 2, 1.1), [43, 4, 8], () => lightMat],
       ['tailA', new RoundedBoxGeometry(2, 4.5, 7, 2, 1), [-43, 4, -8], () => tailMat],
       ['tailB', new RoundedBoxGeometry(2, 4.5, 7, 2, 1), [-43, 4, 8], () => tailMat],
       ['tailBar', new THREE.BoxGeometry(2, 2.2, 20), [-43.2, 5, 0], () => tailMat],
+      ['indicators', indicatorGeo, [0, 0, 0], () => indicatorMat],
       ['grilleSlats', grilleGeo, [0, 0, 0], () => trimMat],
       ['frontBumper', new RoundedBoxGeometry(3.5, 6, 28, 2, 1.3), [44.5, -4.5, 0], () => darkMat],
       ['rearBumper', new RoundedBoxGeometry(3.5, 6, 28, 2, 1.3), [-44.5, -4.5, 0], () => darkMat],
+      ['aero', aeroGeo, [0, 0, 0], () => darkMat],
       ['doorSeams', seamGeo, [0, 0, 0], () => darkMat],
       ['doorHandles', handleGeo, [0, 0, 0], () => chromeMat],
       ['mirrors', mirrorGeo, [0, 0, 0], () => trimMat],
@@ -133,6 +179,9 @@ export class CarFleet {
       ['spoiler', new RoundedBoxGeometry(6, 1.4, 23, 2, 0.6), [-39, 22, 0], () => paintMat, null, true],
       ['plate', new THREE.BoxGeometry(1, 4, 10), [-44.6, -1, 0], () => plateMat],
       ['exhausts', exhaustGeo, [0, 0, 0], () => chromeMat],
+      ['policeDoors', liveryGeo, [0, 0, 0], () => liveryMat, null, false, 0, 'police'],
+      ['policeStripe', liveryStripeGeo, [0, 0, 0], () => darkMat, null, false, 0, 'police'],
+      ['taxiSign', taxiGeo, [0, 0, 0], () => taxiMat, null, false, 0, 'taxi'],
       ['lightbarRed', new THREE.BoxGeometry(4, 4, 12), [-6, 34, -6], () => new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: false })],
       ['lightbarBlue', new THREE.BoxGeometry(4, 4, 12), [-6, 34, 6], () => new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: false })]
     ];
@@ -140,14 +189,16 @@ export class CarFleet {
     const noShadow = new Set([
       'hood', 'rimFL', 'rimFR', 'rimRL', 'rimRR', 'hubCaps', 'arches',
       'grilleSlats', 'doorSeams', 'doorHandles', 'mirrors', 'roofRails',
-      'spoiler', 'plate', 'exhausts', 'lightbarRed', 'lightbarBlue'
+      'spoiler', 'plate', 'exhausts', 'interior', 'wipers', 'calipers',
+      'indicators', 'aero', 'policeDoors', 'policeStripe', 'taxiSign',
+      'lightbarRed', 'lightbarBlue'
     ]);
-    parts.forEach(([key, geo, pos, makeMat, kind, paint, extraRotZ]) => {
+    parts.forEach(([key, geo, pos, makeMat, kind, paint, extraRotZ, variant]) => {
       const mesh = new THREE.InstancedMesh(geo, makeMat(), cars.length);
       mesh.castShadow = !noShadow.has(key);
       mesh.frustumCulled = false;
       scene.add(mesh);
-      this.parts.push({ key, mesh, pos, kind, paint, extraRotZ });
+      this.parts.push({ key, mesh, pos, kind, paint, extraRotZ, variant });
     });
 
     // One point per car: damaged cars emit a soft exhaust puff, others sit below ground.
@@ -266,7 +317,9 @@ export class CarFleet {
         const rx = part.kind === 'wheel' ? Math.PI / 2 : 0;
         const rz = part.kind === 'wheel' ? spin : (part.extraRotZ || 0);
         this.local.rotation.set(rx, 0, rz);
-        this.local.scale.setScalar(siren ? (on ? 1 : 0) : 1);
+        const variantOff = (part.variant === 'police' && !police)
+          || (part.variant === 'taxi' && i % 7 !== 0);
+        this.local.scale.setScalar(siren ? (on ? 1 : 0) : variantOff ? 0 : 1);
         this.local.updateMatrix();
         this.matrix.multiplyMatrices(car.matrix, this.shellMatrix);
         this.matrix.multiply(this.local.matrix);
