@@ -1,10 +1,27 @@
 import * as THREE from 'three';
+import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+
+// Small helpers for the merged trim details shared by every instanced car.
+const boxAt = (w, h, d, x, y, z) => {
+  const g = new THREE.BoxGeometry(w, h, d);
+  g.translate(x, y, z);
+  return g;
+};
+const cylAt = (r, h, x, y, z, axis = 'y') => {
+  const g = new THREE.CylinderGeometry(r, r, h, 10);
+  if (axis === 'x') g.rotateZ(Math.PI / 2);
+  if (axis === 'z') g.rotateX(Math.PI / 2);
+  g.translate(x, y, z);
+  return g;
+};
+const merge = geos => mergeGeometries(geos, false);
 
 const tireMat = new THREE.MeshStandardMaterial({ color: 0x0e0e12, roughness: 0.95 });
-const rimMat = new THREE.MeshStandardMaterial({ color: 0xcfd6e0, metalness: 0.9, roughness: 0.25 });
+const rimMat = new THREE.MeshStandardMaterial({ color: 0xd8dee8, metalness: 0.95, roughness: 0.18 });
 const glassMat = new THREE.MeshStandardMaterial({
-  color: 0x142b3a, metalness: 0.6, roughness: 0.15,
-  transparent: true, opacity: 0.82, side: THREE.DoubleSide
+  color: 0x10283b, metalness: 0.55, roughness: 0.08,
+  transparent: true, opacity: 0.76, side: THREE.DoubleSide
 });
 const chromeMat = new THREE.MeshStandardMaterial({ color: 0xdfe6ef, metalness: 1, roughness: 0.2 });
 const lightMat = new THREE.MeshStandardMaterial({ color: 0xfff2c0, emissive: 0xffe8a0, emissiveIntensity: 1.4 });
@@ -42,18 +59,51 @@ export class CarFleet {
     this.tint = new THREE.Color();
     this.parts = [];
 
-    const paintMat = new THREE.MeshStandardMaterial({ color: 0xffffff, metalness: 0.55, roughness: 0.32 });
-    const darkMat = new THREE.MeshStandardMaterial({ color: 0x16161c, roughness: 0.8 });
+    const paintMat = new THREE.MeshPhysicalMaterial({
+      color: 0xffffff, metalness: 0.52, roughness: 0.26,
+      clearcoat: 0.75, clearcoatRoughness: 0.16
+    });
+    const darkMat = new THREE.MeshStandardMaterial({ color: 0x121218, roughness: 0.82 });
+    const archMat = new THREE.MeshStandardMaterial({ color: 0x0b0b10, roughness: 0.7, metalness: 0.15 });
     const pillarMat = new THREE.MeshStandardMaterial({ color: 0x1a1a20, metalness: 0.4, roughness: 0.5 });
+    const trimMat = new THREE.MeshStandardMaterial({ color: 0x8f9aa8, metalness: 0.85, roughness: 0.28 });
+    const plateMat = new THREE.MeshStandardMaterial({ color: 0xf1d994, roughness: 0.7 });
     const creaseMat = new THREE.MeshStandardMaterial({ color: 0xffffff, transparent: true, opacity: 0.06 });
 
     // Coordinates below are in the original model space: +X = nose, Y up, Z across.
+    const wheelSpots = [[-27, -12], [-27, 12], [27, -12], [27, 12]];
+    const archGeo = merge(wheelSpots.map(([x, z]) => {
+      const g = new THREE.TorusGeometry(11.4, 2.2, 6, 12, Math.PI);
+      g.translate(x, -6, z);
+      return g;
+    }));
+    const hubGeo = merge(wheelSpots.map(([x, z]) => cylAt(2.6, 8.2, x, -6, z, 'z')));
+    const seamGeo = merge([-13.25, 13.25].flatMap(z => [
+      boxAt(0.7, 16, 0.5, -8, 12, z),
+      boxAt(0.7, 16, 0.5, 8, 12, z),
+      boxAt(70, 0.7, 0.5, 0, 2, z)
+    ]));
+    const handleGeo = merge([-13.7, 13.7].flatMap(z => [
+      boxAt(6, 1.2, 1.2, -8, 14, z),
+      boxAt(6, 1.2, 1.2, 8, 14, z)
+    ]));
+    const mirrorGeo = merge([-1, 1].flatMap(s => [
+      boxAt(4, 1.2, 4, 17, 25, s * 14),
+      boxAt(4, 4.5, 6, 16.5, 28, s * 15)
+    ]));
+    const railGeo = merge([-9, 9].map(z => boxAt(34, 1.2, 1.2, -6, 33, z)));
+    const grilleGeo = merge([-5, -3, -1, 1].map(y => boxAt(1.2, 0.8, 20, 44, y, 0)));
+    const exhaustGeo = merge([
+      cylAt(2.6, 6, -46, -3, -6, 'x'),
+      cylAt(2.6, 6, -46, -3, 6, 'x')
+    ]);
+
     const parts = [
-      ['bodyLower', new THREE.BoxGeometry(86, 18.2, 26), [0, 3.9, 0], () => paintMat, null, true],
-      ['bodyUpper', new THREE.BoxGeometry(82.56, 7.8, 24.96), [0, 16.12, 0], () => paintMat, null, true],
+      ['bodyLower', new RoundedBoxGeometry(86, 18.2, 26, 2, 3.4), [0, 3.9, 0], () => paintMat, null, true],
+      ['bodyUpper', new RoundedBoxGeometry(82.56, 7.8, 24.96, 2, 2.2), [0, 16.12, 0], () => paintMat, null, true],
       ['skirtA', new THREE.BoxGeometry(77.4, 4.68, 2), [0, -5.72, -12], () => darkMat],
       ['skirtB', new THREE.BoxGeometry(77.4, 4.68, 2), [0, -5.72, 12], () => darkMat],
-      ['hood', new THREE.BoxGeometry(34, 0.6, 22), [25, 14, 0], () => creaseMat],
+      ['hood', new RoundedBoxGeometry(34, 0.8, 22, 2, 0.35), [25, 14, 0], () => creaseMat],
       ['cabin', new THREE.BoxGeometry(46, 18, 22), [-6, 23, 0], () => glassMat],
       ['wind', new THREE.BoxGeometry(2, 17, 20), [17, 23, 0], () => glassMat, null, false, -0.5],
       ['pillarA', new THREE.BoxGeometry(3, 18, 3), [-6, 23, -10], () => pillarMat],
@@ -66,18 +116,35 @@ export class CarFleet {
       ['rimFR', new THREE.CylinderGeometry(5.5, 5.5, 7.4, 10), [-27, -6, 12], () => rimMat, 'wheel'],
       ['rimRL', new THREE.CylinderGeometry(5.5, 5.5, 7.4, 10), [27, -6, -12], () => rimMat, 'wheel'],
       ['rimRR', new THREE.CylinderGeometry(5.5, 5.5, 7.4, 10), [27, -6, 12], () => rimMat, 'wheel'],
-      ['headA', new THREE.BoxGeometry(2, 5, 7), [43, 4, -8], () => lightMat],
-      ['headB', new THREE.BoxGeometry(2, 5, 7), [43, 4, 8], () => lightMat],
-      ['tailA', new THREE.BoxGeometry(2, 4, 7), [-43, 4, -8], () => tailMat],
-      ['tailB', new THREE.BoxGeometry(2, 4, 7), [-43, 4, 8], () => tailMat],
-      ['grille', new THREE.BoxGeometry(2, 5, 16), [43, -3, 0], () => chromeMat],
+      ['hubCaps', hubGeo, [0, 0, 0], () => chromeMat],
+      ['arches', archGeo, [0, 0, 0], () => archMat],
+      ['headA', new RoundedBoxGeometry(2, 5.5, 7, 2, 1.1), [43, 4, -8], () => lightMat],
+      ['headB', new RoundedBoxGeometry(2, 5.5, 7, 2, 1.1), [43, 4, 8], () => lightMat],
+      ['tailA', new RoundedBoxGeometry(2, 4.5, 7, 2, 1), [-43, 4, -8], () => tailMat],
+      ['tailB', new RoundedBoxGeometry(2, 4.5, 7, 2, 1), [-43, 4, 8], () => tailMat],
+      ['tailBar', new THREE.BoxGeometry(2, 2.2, 20), [-43.2, 5, 0], () => tailMat],
+      ['grilleSlats', grilleGeo, [0, 0, 0], () => trimMat],
+      ['frontBumper', new RoundedBoxGeometry(3.5, 6, 28, 2, 1.3), [44.5, -4.5, 0], () => darkMat],
+      ['rearBumper', new RoundedBoxGeometry(3.5, 6, 28, 2, 1.3), [-44.5, -4.5, 0], () => darkMat],
+      ['doorSeams', seamGeo, [0, 0, 0], () => darkMat],
+      ['doorHandles', handleGeo, [0, 0, 0], () => chromeMat],
+      ['mirrors', mirrorGeo, [0, 0, 0], () => trimMat],
+      ['roofRails', railGeo, [0, 0, 0], () => chromeMat],
+      ['spoiler', new RoundedBoxGeometry(6, 1.4, 23, 2, 0.6), [-39, 22, 0], () => paintMat, null, true],
+      ['plate', new THREE.BoxGeometry(1, 4, 10), [-44.6, -1, 0], () => plateMat],
+      ['exhausts', exhaustGeo, [0, 0, 0], () => chromeMat],
       ['lightbarRed', new THREE.BoxGeometry(4, 4, 12), [-6, 34, -6], () => new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: false })],
       ['lightbarBlue', new THREE.BoxGeometry(4, 4, 12), [-6, 34, 6], () => new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: false })]
     ];
 
+    const noShadow = new Set([
+      'hood', 'rimFL', 'rimFR', 'rimRL', 'rimRR', 'hubCaps', 'arches',
+      'grilleSlats', 'doorSeams', 'doorHandles', 'mirrors', 'roofRails',
+      'spoiler', 'plate', 'exhausts', 'lightbarRed', 'lightbarBlue'
+    ]);
     parts.forEach(([key, geo, pos, makeMat, kind, paint, extraRotZ]) => {
       const mesh = new THREE.InstancedMesh(geo, makeMat(), cars.length);
-      mesh.castShadow = key !== 'hood' && key !== 'rimFL' && key !== 'rimFR' && key !== 'rimRL' && key !== 'rimRR';
+      mesh.castShadow = !noShadow.has(key);
       mesh.frustumCulled = false;
       scene.add(mesh);
       this.parts.push({ key, mesh, pos, kind, paint, extraRotZ });
@@ -148,6 +215,25 @@ export class CarFleet {
     this.spillMesh = new THREE.InstancedMesh(spillGeo, this.spillMat, cars.length);
     this.spillMesh.frustumCulled = false;
     scene.add(this.spillMesh);
+
+    // Soft contact shadow under every car — one draw call, grounds the fleet.
+    const shadowCv = document.createElement('canvas');
+    shadowCv.width = shadowCv.height = 64;
+    const shc = shadowCv.getContext('2d');
+    const shg = shc.createRadialGradient(32, 32, 2, 32, 32, 32);
+    shg.addColorStop(0, 'rgba(0,0,0,0.72)');
+    shg.addColorStop(0.5, 'rgba(0,0,0,0.34)');
+    shg.addColorStop(1, 'rgba(0,0,0,0)');
+    shc.fillStyle = shg; shc.fillRect(0, 0, 64, 64);
+    const shadowTex = new THREE.CanvasTexture(shadowCv);
+    const shadowGeo = new THREE.PlaneGeometry(104, 58);
+    shadowGeo.rotateX(-Math.PI / 2);
+    this.shadowMesh = new THREE.InstancedMesh(shadowGeo, new THREE.MeshBasicMaterial({
+      map: shadowTex, transparent: true, opacity: 0.46, depthWrite: false,
+      side: THREE.DoubleSide, toneMapped: false
+    }), cars.length);
+    this.shadowMesh.frustumCulled = false;
+    scene.add(this.shadowMesh);
 
     this.sync();
   }
@@ -230,6 +316,13 @@ export class CarFleet {
       this.local.updateMatrix();
       this.matrix.multiplyMatrices(car.matrix, this.shellMatrix).multiply(this.local.matrix);
       this.spillMesh.setMatrixAt(i, this.matrix);
+
+      this.local.position.set(0, -14.78, 0);
+      this.local.rotation.set(0, 0, 0);
+      this.local.scale.set(1, 1, 1);
+      this.local.updateMatrix();
+      this.matrix.multiplyMatrices(car.matrix, this.shellMatrix).multiply(this.local.matrix);
+      this.shadowMesh.setMatrixAt(i, this.matrix);
     });
     this.parts.forEach(part => {
       part.mesh.instanceMatrix.needsUpdate = true;
@@ -240,6 +333,7 @@ export class CarFleet {
     this.smokeGeo.attributes.position.needsUpdate = true;
     this.fireGeo.attributes.position.needsUpdate = true;
     this.spillMesh.instanceMatrix.needsUpdate = true;
+    this.shadowMesh.instanceMatrix.needsUpdate = true;
   }
 }
 
