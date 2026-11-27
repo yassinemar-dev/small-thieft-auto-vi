@@ -84,10 +84,74 @@ cloudGroup.children.forEach(s => {
   s.userData.baseColor = s.material.color.clone();
 });
 
+// ---- Night sky: star field and a cratered moon on the same sky dome ----
+function dotTexture() {
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = 32;
+  const c = cv.getContext('2d');
+  const g = c.createRadialGradient(16, 16, 0, 16, 16, 16);
+  g.addColorStop(0, 'rgba(255,255,255,1)');
+  g.addColorStop(0.3, 'rgba(255,255,255,0.85)');
+  g.addColorStop(1, 'rgba(255,255,255,0)');
+  c.fillStyle = g; c.fillRect(0, 0, 32, 32);
+  const tex = new THREE.CanvasTexture(cv);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+const starPos = new Float32Array(900 * 3);
+for (let i = 0; i < 900; i++) {
+  const a = Math.random() * Math.PI * 2;
+  const y = 0.08 + Math.random() * 0.92;
+  const r = Math.sqrt(1 - y * y) * 3000;
+  starPos[i * 3] = Math.cos(a) * r;
+  starPos[i * 3 + 1] = y * 3000;
+  starPos[i * 3 + 2] = Math.sin(a) * r;
+}
+const starGeo = new THREE.BufferGeometry();
+starGeo.setAttribute('position', new THREE.BufferAttribute(starPos, 3));
+const starField = new THREE.Points(starGeo, new THREE.PointsMaterial({
+  map: dotTexture(), color: 0xdfe8ff, size: 11, sizeAttenuation: true,
+  transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending,
+  fog: false, toneMapped: false
+}));
+sky.add(starField);
+
+const moonCv = document.createElement('canvas');
+moonCv.width = moonCv.height = 128;
+const mc = moonCv.getContext('2d');
+const mg = mc.createRadialGradient(52, 46, 2, 64, 64, 64);
+mg.addColorStop(0, '#ffffff');
+mg.addColorStop(0.65, '#dfe8ff');
+mg.addColorStop(1, '#9fb4d8');
+mc.fillStyle = mg; mc.fillRect(0, 0, 128, 128);
+mc.fillStyle = 'rgba(120,140,180,0.18)';
+[[42, 44, 12], [78, 38, 8], [60, 78, 15], [88, 70, 9]].forEach(([x, y, r]) => {
+  mc.beginPath(); mc.arc(x, y, r, 0, Math.PI * 2); mc.fill();
+});
+const moonTex = new THREE.CanvasTexture(moonCv);
+moonTex.colorSpace = THREE.SRGBColorSpace;
+const moon = new THREE.Mesh(
+  new THREE.SphereGeometry(46, 20, 20),
+  new THREE.MeshBasicMaterial({
+    map: moonTex, transparent: true, opacity: 0, fog: false, toneMapped: false
+  })
+);
+moon.position.set(1150, 860, 1450);
+sky.add(moon);
+const moonHalo = new THREE.Sprite(new THREE.SpriteMaterial({
+  map: flareTexture('glow'), color: 0xbcd4ff, transparent: true, opacity: 0,
+  depthWrite: false, blending: THREE.AdditiveBlending, fog: false, toneMapped: false
+}));
+moonHalo.position.copy(moon.position);
+moonHalo.scale.setScalar(330);
+sky.add(moonHalo);
+
 // ---- Sun + lens flare ----
 const sun = new THREE.Mesh(
   new THREE.SphereGeometry(70, 24, 24),
-  new THREE.MeshBasicMaterial({ color: 0xffe6b8, fog: false, toneMapped: false })
+  new THREE.MeshBasicMaterial({
+    color: 0xffe6b8, transparent: true, opacity: 1, fog: false, toneMapped: false
+  })
 );
 scene.add(sun);
 
@@ -231,6 +295,12 @@ const dayNight = {
     renderer.toneMappingExposure = THREE.MathUtils.lerp(a.exposure, b.exposure, k);
 
     this.night = THREE.MathUtils.lerp(a.night, b.night, k);
+    const skyNight = THREE.MathUtils.smoothstep(this.night, 0.35, 0.85);
+    sun.material.opacity = 1 - skyNight * 0.9;
+    lensflare.visible = skyNight < 0.82;
+    starField.material.opacity = skyNight * (0.86 + Math.sin(performance.now() * 0.002) * 0.08);
+    moon.material.opacity = skyNight;
+    moonHalo.material.opacity = skyNight * 0.5;
     game?.city.setNightFactor(this.night);
     game?.cars.setNightFactor(this.night);
     bloom.strength = THREE.MathUtils.lerp(0.55, 0.9, this.night);
@@ -350,6 +420,8 @@ if (import.meta.env.DEV) {
   window.__camera = camera;
   window.__audio = audio;
   window.__headlight = headlight;
+  window.__stars = starField;
+  window.__moon = moon;
 }
 window.addEventListener('pointerdown', () => audio.init(), { passive: true });
 window.addEventListener('keydown', () => audio.init());

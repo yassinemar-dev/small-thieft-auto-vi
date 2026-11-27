@@ -143,6 +143,7 @@ export class City {
 
     // ---- Asphalt (subtle grain + tar seams) ----
     const asphalt = new THREE.MeshStandardMaterial({ map: asphaltTexture(), roughness: 1 });
+    this.asphaltMat = asphalt; // turns glassy and reflective after dark
     const roadMesh = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1), asphalt, this.roads.length);
     this.roads.forEach((r, i) => {
       dummy.position.set(r.x + r.width / 2, 0.12, r.z + r.height / 2);
@@ -517,6 +518,36 @@ export class City {
         this.group.add(mesh);
       });
     }
+    // Wet-night neon smears on the street below every shop sign
+    if (signList.length) {
+      const smearTex = canvasTexture(128, (c, s) => {
+        const g = c.createRadialGradient(s / 2, s / 2, 0, s / 2, s / 2, s / 2);
+        g.addColorStop(0, 'rgba(255,255,255,0.9)');
+        g.addColorStop(0.35, 'rgba(255,255,255,0.3)');
+        g.addColorStop(1, 'rgba(255,255,255,0)');
+        c.fillStyle = g; c.fillRect(0, 0, s, s);
+      });
+      this.neonReflectionMat = new THREE.MeshBasicMaterial({
+        map: smearTex, transparent: true, opacity: 0, depthWrite: false,
+        blending: THREE.AdditiveBlending, side: THREE.DoubleSide, toneMapped: false
+      });
+      const smear = new THREE.InstancedMesh(
+        new THREE.PlaneGeometry(1, 1), this.neonReflectionMat, signList.length
+      );
+      signList.forEach((s, i) => {
+        dummy.position.set(s.x, 0.4, s.z + 15);
+        dummy.rotation.set(-Math.PI / 2, 0, 0);
+        dummy.scale.set(s.w * 1.5, 30, 1);
+        dummy.updateMatrix();
+        smear.setMatrixAt(i, dummy.matrix);
+        smear.setColorAt(i, new THREE.Color(s.color));
+      });
+      smear.instanceMatrix.needsUpdate = true;
+      if (smear.instanceColor) smear.instanceColor.needsUpdate = true;
+      smear.frustumCulled = false;
+      this.group.add(smear);
+    }
+
     const bins = [];
     for (let i = -8; i <= 8; i++) {
       for (let j = -8; j <= 8; j++) {
@@ -758,6 +789,25 @@ export class City {
     poolMesh.frustumCulled = false;
     this.group.add(poolMesh);
 
+    // Faint volumetric cones under each lamp — one instanced draw call
+    this.lampShaftMat = new THREE.MeshBasicMaterial({
+      color: 0xffd39a, transparent: true, opacity: 0, depthWrite: false,
+      blending: THREE.AdditiveBlending, side: THREE.DoubleSide, toneMapped: false
+    });
+    const shaftMesh = new THREE.InstancedMesh(
+      new THREE.ConeGeometry(15, 18, 12, 1, true), this.lampShaftMat, lights.length
+    );
+    lights.forEach((l, i) => {
+      dummy.position.set(l.x, 9.5, l.z);
+      dummy.rotation.set(0, 0, 0);
+      dummy.scale.set(1, 1, 1);
+      dummy.updateMatrix();
+      shaftMesh.setMatrixAt(i, dummy.matrix);
+    });
+    shaftMesh.instanceMatrix.needsUpdate = true;
+    shaftMesh.frustumCulled = false;
+    this.group.add(shaftMesh);
+
     // ---- Distant State-of-San-Andreas-style hills on the horizon ----
     const hills = [];
     for (let i = 0; i < 28; i++) {
@@ -845,6 +895,12 @@ export class City {
     for (const mat of this.neonMaterials) {
       mat.color.setScalar(THREE.MathUtils.lerp(1, 1.25, f));
     }
+    if (this.asphaltMat) {
+      this.asphaltMat.roughness = THREE.MathUtils.lerp(1, 0.34, f);
+      this.asphaltMat.metalness = THREE.MathUtils.lerp(0, 0.22, f);
+    }
+    if (this.neonReflectionMat) this.neonReflectionMat.opacity = THREE.MathUtils.lerp(0, 0.42, f);
+    if (this.lampShaftMat) this.lampShaftMat.opacity = THREE.MathUtils.lerp(0, 0.11, f);
   }
 
   /** Alternate red/green every four seconds and blink the amber bulbs. */
