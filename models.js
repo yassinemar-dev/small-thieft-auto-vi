@@ -127,6 +127,28 @@ export class CarFleet {
     this.fire.frustumCulled = false;
     scene.add(this.fire);
 
+    // Forward light spill on the road — one flat instanced quad per car, night-only.
+    const spillCv = document.createElement('canvas');
+    spillCv.width = spillCv.height = 64;
+    const sc = spillCv.getContext('2d');
+    const sg = sc.createRadialGradient(32, 32, 2, 32, 32, 32);
+    sg.addColorStop(0, 'rgba(255,242,202,0.95)');
+    sg.addColorStop(0.4, 'rgba(255,220,150,0.36)');
+    sg.addColorStop(1, 'rgba(255,200,120,0)');
+    sc.fillStyle = sg; sc.fillRect(0, 0, 64, 64);
+    const spillTex = new THREE.CanvasTexture(spillCv);
+    spillTex.colorSpace = THREE.SRGBColorSpace;
+    this.spillMat = new THREE.MeshBasicMaterial({
+      map: spillTex, color: 0xffe2a8, transparent: true, opacity: 0,
+      depthWrite: false, blending: THREE.AdditiveBlending,
+      side: THREE.DoubleSide, toneMapped: false
+    });
+    const spillGeo = new THREE.PlaneGeometry(1, 1);
+    spillGeo.rotateX(-Math.PI / 2);
+    this.spillMesh = new THREE.InstancedMesh(spillGeo, this.spillMat, cars.length);
+    this.spillMesh.frustumCulled = false;
+    scene.add(this.spillMesh);
+
     this.sync();
   }
 
@@ -134,6 +156,7 @@ export class CarFleet {
   setNightFactor(f) {
     lightMat.emissiveIntensity = THREE.MathUtils.lerp(0.45, 2.8, f);
     tailMat.emissiveIntensity = THREE.MathUtils.lerp(0.6, 1.5, f);
+    this.spillMat.opacity = THREE.MathUtils.lerp(0, 0.45, f);
   }
 
   /** Push proxy transforms, paint, body roll and wheel spin to the GPU. */
@@ -198,6 +221,15 @@ export class CarFleet {
       } else {
         this.firePos[i * 3 + 1] = -1000;
       }
+
+      // Warm spill just ahead of each car, flat on the road and aligned to its heading.
+      // Car proxies sit at y=15 so their wheels touch the asphalt.
+      this.local.position.set(42, -14.55, 0);
+      this.local.rotation.set(0, 0, 0);
+      this.local.scale.set(72, 1, 42);
+      this.local.updateMatrix();
+      this.matrix.multiplyMatrices(car.matrix, this.shellMatrix).multiply(this.local.matrix);
+      this.spillMesh.setMatrixAt(i, this.matrix);
     });
     this.parts.forEach(part => {
       part.mesh.instanceMatrix.needsUpdate = true;
@@ -207,6 +239,7 @@ export class CarFleet {
     });
     this.smokeGeo.attributes.position.needsUpdate = true;
     this.fireGeo.attributes.position.needsUpdate = true;
+    this.spillMesh.instanceMatrix.needsUpdate = true;
   }
 }
 
